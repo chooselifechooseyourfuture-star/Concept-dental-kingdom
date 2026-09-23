@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>デンタルキングダム コンセプトムービー v5</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#2a2420;--fg:#f4ecdf;--muted:#c9b9a3;--btn:#f2b632;--btnfg:#2a2420;--btn2:#5a4b3d;--btn2fg:#f4ecdf;--panel:rgba(20,14,10,0.86)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#17120f}}
+:root[data-theme="dark"]{--bg:#17120f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Hiragino Sans',sans-serif;overflow:hidden;position:relative}
+#wrap{position:absolute;left:50%;top:50%;width:390px;height:844px;margin-left:-195px;margin-top:-422px;transform-origin:center center}
+#stage{position:absolute;left:0;top:0;width:390px;height:844px;background:#eadfc3;border-radius:28px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+canvas{position:absolute;left:0;top:0;width:390px;height:844px;touch-action:none;display:block}
+#capbar{position:absolute;left:0;top:760px;width:390px;height:84px;background:rgba(20,14,10,0.92);display:flex;align-items:center;gap:6px;padding:0 8px;box-sizing:border-box}
+#cap{flex:1 1 auto;min-width:0;font-size:14px;font-weight:800;line-height:1.35;color:var(--fg);white-space:pre-line}
+#ctrls{flex:0 0 auto;display:flex;flex-direction:column;gap:4px}
+button{font-family:inherit;font-weight:800;font-size:11px;border:0;border-radius:16px;padding:6px 10px;min-height:30px;cursor:pointer;background:var(--btn2);color:var(--btn2fg)}
+button.primary{background:var(--btn);color:var(--btnfg)}
+#overlay,#menu{position:absolute;left:0;top:0;width:390px;height:760px;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;box-sizing:border-box}
+#overlay h1{margin:0;font-size:26px;font-weight:800;color:#ffe9b0}
+#overlay p,#menu p{margin:0;font-size:13px;color:var(--fg);line-height:1.6;white-space:pre-line}
+#overlay .row,#menu .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#overlay button.primary{font-size:17px;padding:12px 26px;min-height:44px}
+#menu button{width:300px;min-height:44px;font-size:14px;text-align:left;padding-left:16px}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="game" width="390" height="844"></canvas>
+    <div id="overlay">
+      <h1>大冒険！デンタルキングダム</h1>
+      <p>コンセプトムービー v5　約4分
+はじめに「なぜこう作ったか」、次に「遊びはこれだけ」、そのあと機能ごとの遊びかた。音が出ます。</p>
+      <div class="row"><button class="primary" id="btnStart">▶ 再生する</button></div>
+      <div class="row"><button id="btnMenu0">章を選ぶ</button><button id="btnPlay0">パズルを触ってみる</button></div>
+      <p style="font-size:11px;color:var(--muted)">絵はすべて仮。カルテの中身は監修前の仮データです</p>
+    </div>
+    <div id="menu" class="hidden"></div>
+    <div id="capbar">
+      <div id="cap"></div>
+      <div id="ctrls">
+        <button id="btnSound">音</button>
+        <button id="btnMenu">章</button>
+        <button id="btnPlay">触る</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+/* ===================== 定数 ===================== */
+var W=390,H=844,GH=760;
+var TILE=40,COLS=8,ROWS=10,BX=35,BY=64;
+var TEETH_UP=[[3,0],[2,0],[1,1],[0,2],[0,3],[0,4],[0,5],[1,6],[2,7],[3,7]];
+var TEETH_LO=[[6,0],[7,0],[8,1],[9,2],[9,3],[9,4],[9,5],[8,6],[7,7],[6,7]];
+var GUM=[[1,2],[1,3],[1,4],[1,5],[2,1],[2,6],[3,1],[3,6],[8,2],[8,3],[8,4],[8,5],[7,1],[7,6],[6,1],[6,6]];
+var CHEEK=[[0,0],[0,1],[0,6],[0,7],[1,0],[1,7],[9,0],[9,1],[9,6],[9,7],[8,0],[8,7],[4,0],[4,7],[5,0],[5,7]];
+var TILES=[];
+(function(){
+  function has(list,r,c){for(var i=0;i<list.length;i++){if(list[i][0]===r&&list[i][1]===c)return i;}return -1;}
+  for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
+    var t={r:r,c:c,type:'tongue',arch:null,ai:-1,x:BX+c*TILE+TILE/2,y:BY+r*TILE+TILE/2};
+    var u=has(TEETH_UP,r,c),l=has(TEETH_LO,r,c);
+    if(u>=0){t.type='tooth';t.arch='up';t.ai=u;}else if(l>=0){t.type='tooth';t.arch='lo';t.ai=l;}
+    else if(has(GUM,r,c)>=0)t.type='gum';else if(has(CHEEK,r,c)>=0)t.type='cheek';
+    TILES.push(t);
+  }
+})();
+function tileAt(r,c){if(r<0||c<0||r>=ROWS||c>=COLS)return -1;return r*COLS+c;}
+function toothIdx(arch,ai){for(var i=0;i<TILES.length;i++){if(TILES[i].arch===arch&&TILES[i].ai===ai)return i;}return -1;}
+var HOME={denta:{x:70,y:492},taru:{x:320,y:492},iru:{x:195,y:492}};
+var CUP={top:508,bot:742,xl0:40,xr0:350,xl1:72,xr1:318,water:530};
+function cupX(y){var f=(y-CUP.top)/(CUP.bot-CUP.top);return {l:CUP.xl0+(CUP.xl1-CUP.xl0)*f,r:CUP.xr0+(CUP.xr1-CUP.xr0)*f};}
+var TYPES={
+  fluoride:{name:'フッ素',icon:'drop',who:'t'},stopmed:{name:'とめる薬',icon:'pill',who:'d'},
+  anes:{name:'麻酔',icon:'syringe',who:'d'},turbine:{name:'タービン',icon:'drill',who:'d'},cr:{name:'CR',icon:'tooth',who:'d'},light:{name:'照射器',icon:'light',who:'d'},
+  nerve:{name:'神経治療',icon:'nerve',who:'d'},silver:{name:'銀歯',icon:'silver',who:'d'},antibio:{name:'抗菌薬',icon:'pill',who:'d'},pain:{name:'痛み止め',icon:'pill',who:'d'},
+  brush:{name:'歯ブラシ',icon:'brush',who:'t'},floss:{name:'フロス',icon:'floss',who:'t'},rinse:{name:'洗口剤',icon:'drop',who:'t'},gargle:{name:'うがい',icon:'gargle',who:'t'},
+  juice:{name:'ジュース',icon:'cup',who:'i'},sweets:{name:'お菓子',icon:'candy',who:'i'},skip:{name:'サボり',icon:'nobrush',who:'i'}
+};
+var LINES={caries:{spread:'arch',every:12},gum:{spread:'gum',every:7},mucosa:{spread:'cheek',every:14},force:{spread:'molars',every:10},growth:{spread:'front',every:10}};
+var DZ={
+  c1:{name:'軽い虫歯',code:'C1',line:'caries',pri:1,karte:['fluoride','stopmed'],next:'c2',evolve:16,on:'tooth'},
+  c2:{name:'ひどい虫歯',code:'C2',line:'caries',pri:2,karte:['anes','turbine','cr','light'],next:'c3',evolve:18,on:'tooth'},
+  c3:{name:'神経痛',code:'C3',line:'caries',pri:3,karte:['anes','nerve','silver'],next:'lost',evolve:20,on:'tooth'},
+  plaque:{name:'プラーク',code:'P',line:'gum',pri:1,karte:['brush','gargle'],next:'gingivitis',evolve:14,on:'gum'},
+  gingivitis:{name:'歯肉炎',code:'炎',line:'gum',pri:2,karte:['brush','floss','rinse'],next:'perio',evolve:16,on:'gum'},
+  perio:{name:'歯周病',code:'周',line:'gum',pri:3,karte:['anes','antibio','brush','floss'],next:null,evolve:0,on:'gum'},
+  stomatitis:{name:'口内炎',code:'口',line:'mucosa',pri:1,karte:['rinse','pain'],next:null,evolve:0,on:'cheek'}
+};
+var BAD=['juice','sweets','skip'],BLOCK=['brush','fluoride'];
+var FONT="'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Hiragino Sans',sans-serif";
+var COL={d:'#2f5fbf',t:'#e2508a',i:'#7b3fbf'};
+
+/* ===================== 状態 ===================== */
+var S=null;
+function reset(mode){
+  S={mode:mode,scene:'board',t:0,timeLeft:90,uid:0,score:0,over:false,equip:3,autoSpread:mode==='play',autoEvolve:mode==='play',
+     cells:[],bubbles:[],chain:{active:false,kind:null,ids:[]},target:-1,
+     ill:{active:false,cell:-1,progress:0,dur:5,ids:[]},
+     chars:{denta:{x:HOME.denta.x,y:HOME.denta.y,st:'idle',stT:0},taru:{x:HOME.taru.x,y:HOME.taru.y,st:'idle',stT:0},iru:{x:HOME.iru.x,y:HOME.iru.y,st:'idle',stT:0,scale:1}},
+     particles:[],popups:[],events:[],shake:0,flash:0,flashColor:'#f2b632',shields:{},fade:0,
+     finger:{x:195,y:600,down:false,visible:false},
+     ai:{next:6,refill:1},task:null,gen:null,hint:0,terrShown:80,sc:{},attack:false,arrive:null};
+  for(var i=0;i<TILES.length;i++)S.cells.push({state:'ok',dz:null,spawnT:-9,flipT:-9,healT:-9,spreadAt:0,evolveAt:0,pulseT:-9,lit:false});
+}
+function rand(a,b){return a+Math.random()*(b-a);}
+function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
+function clamp(v,a,b){return v<a?a:v>b?b:v;}
+function later(sec,fn){S.events.push({at:S.t+sec,fn:fn});}
+function terr(){var d=0,i=0;S.cells.forEach(function(c){if(c.state==='ok')d++;else i++;});return {d:d,i:i};}
+
+/* ===================== 音 ===================== */
+var AC=null,soundOn=true;
+function audioInit(){try{if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();}if(AC.state==='suspended'){AC.resume();}}catch(e){AC=null;}}
+function tone(freq,dur,type,vol,slideTo,delay){if(!AC||!soundOn)return;var t0=AC.currentTime+(delay||0);var o=AC.createOscillator(),g=AC.createGain();o.type=type||'sine';o.frequency.setValueAtTime(freq,t0);if(slideTo){o.frequency.exponentialRampToValueAtTime(slideTo,t0+dur);}g.gain.setValueAtTime(0.0001,t0);g.gain.exponentialRampToValueAtTime(vol||0.2,t0+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);o.connect(g);g.connect(AC.destination);o.start(t0);o.stop(t0+dur+0.02);}
+function noise(dur,vol,delay){if(!AC||!soundOn)return;var t0=AC.currentTime+(delay||0);var n=Math.floor(AC.sampleRate*dur);var buf=AC.createBuffer(1,n,AC.sampleRate);var d=buf.getChannelData(0);for(var i=0;i<n;i++){d[i]=(Math.random()*2-1)*(1-i/n);}var src=AC.createBufferSource();src.buffer=buf;var g=AC.createGain();g.gain.value=vol||0.15;var f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=1200;src.connect(f);f.connect(g);g.connect(AC.destination);src.start(t0);}
+var SFX={
+  link:function(n){tone(440*Math.pow(1.19,n),0.13,'triangle',0.25);},
+  wrong:function(){tone(200,0.15,'square',0.08,150);},fizzle:function(){tone(320,0.25,'sine',0.12,140);},
+  combo:function(n){var f=[523,659,784,1046,1318];for(var i=0;i<Math.min(n+1,5);i++){tone(f[i],0.16,'triangle',0.28,null,i*0.07);}noise(0.35,0.12,n*0.07);tone(1568,0.5,'sine',0.12,null,n*0.07+0.1);},
+  swing:function(){noise(0.12,0.18,0);tone(300,0.12,'sine',0.15,900);},growl:function(){tone(120,0.5,'sawtooth',0.18,60);noise(0.2,0.06,0);},
+  spread:function(){tone(160,0.3,'sawtooth',0.12,110);},warning:function(){tone(220,0.09,'square',0.1);tone(220,0.09,'square',0.1,null,0.16);},
+  evolve:function(){tone(180,0.6,'sawtooth',0.22,55);tone(90,0.6,'square',0.1,45);noise(0.3,0.1,0.1);},
+  block:function(){tone(880,0.08,'square',0.18);tone(1320,0.12,'square',0.16,null,0.08);noise(0.15,0.1,0);},
+  shield:function(){tone(660,0.3,'sine',0.14,990);tone(990,0.3,'sine',0.1,1320,0.1);},pop:function(){tone(600,0.08,'sine',0.14,900);},
+  bloop:function(){tone(300,0.12,'sine',0.12,520);},tick:function(){tone(1200,0.03,'square',0.05);},
+  chime:function(){tone(880,0.2,'triangle',0.18);tone(1174,0.25,'triangle',0.16,null,0.12);tone(1568,0.35,'triangle',0.14,null,0.24);},
+  win:function(){var f=[523,659,784,1046,784,1046,1318];for(var i=0;i<f.length;i++){tone(f[i],0.22,'triangle',0.24,null,i*0.11);}}
+};
+
+/* ===================== 泡（うがいのコップ） ===================== */
+function spawnBubble(type,y,xf){
+  y=y||CUP.bot-32;var cx=cupX(y);var x=xf!==undefined?cx.l+(cx.r-cx.l)*xf:rand(cx.l+30,cx.r-30);
+  var b={id:++S.uid,type:type,x:x,y:y,r:24,born:S.t,phase:rand(0,6.28),linked:false,dead:false,dieT:0,shakeT:-9,scale:0,who:TYPES[type].who,lit:false,vy:-13};
+  S.bubbles.push(b);return b;
+}
+function bubbleById(id){for(var i=0;i<S.bubbles.length;i++){if(S.bubbles[i].id===id)return S.bubbles[i];}return null;}
+function killBubble(b,quiet){if(b.dead)return;b.dead=true;b.dieT=S.t;if(!quiet)SFX.pop();}
+function hitBubble(x,y){var best=null,bd=1e9;for(var i=0;i<S.bubbles.length;i++){var b=S.bubbles[i];if(b.dead)continue;var d=dist(x,y,b.x,b.y);if(d<b.r+10&&d<bd){bd=d;best=b;}}return best;}
+function liveBubbles(){return S.bubbles.filter(function(b){return !b.dead;});}
+function hasType(type){return liveBubbles().some(function(b){return b.type===type;});}
+function fillCup(types){types.forEach(function(t,i){spawnBubble(t,CUP.bot-40-i*28,0.15+0.7*((i*0.37)%1));});}
+function tileHit(x,y){for(var i=0;i<TILES.length;i++){var t=TILES[i];if(Math.abs(x-t.x)<=TILE/2&&Math.abs(y-t.y)<=TILE/2)return i;}return -1;}
+
+/* ===================== 標的・ちりょうカルテ ===================== */
+function autoTarget(){
+  if(S.target>=0&&S.cells[S.target].state==='sick')return S.target;
+  var best=-1,bp=0;for(var i=0;i<TILES.length;i++){var c=S.cells[i];if(c.state==='sick'&&DZ[c.dz].pri>bp){bp=DZ[c.dz].pri;best=i;}}
+  S.target=best;return best;
+}
+function karte(){var ti=autoTarget();if(ti<0)return null;var k=DZ[S.cells[ti].dz].karte;return k.length?k:null;}
+function needSeq(){if(S.chain.kind==='block')return BLOCK;return karte();}
+function nextNeeded(){var out=[];if(S.chain.active){var seq=needSeq();if(seq&&S.chain.ids.length<seq.length)out.push(seq[S.chain.ids.length]);return out;}var k=karte();if(k)out.push(k[0]);if(S.ill.active)out.push(BLOCK[0]);return out;}
+function casterOf(seq){return seq.every(function(t){return TYPES[t].who==='t';})?'taru':'denta';}
+
+/* ===================== 指・鎖 ===================== */
+function pointerDown(x,y){
+  S.finger.x=x;S.finger.y=y;S.finger.down=true;if(S.over||S.scene!=='board')return;
+  var ti=tileHit(x,y);if(ti>=0){if(S.cells[ti].state==='sick'){S.target=ti;S.cells[ti].pulseT=S.t;SFX.pop();}return;}
+  var b=hitBubble(x,y);if(!b||b.who==='i')return;
+  if(S.ill.active&&b.type===BLOCK[0]){startChain(b,'block');return;}
+  var k=karte();if(k&&b.type===k[0]){startChain(b,'karte');return;}
+  b.shakeT=S.t;SFX.wrong();
+}
+function pointerMove(x,y){S.finger.x=x;S.finger.y=y;if(!S.chain.active)return;var b=hitBubble(x,y);if(!b||b.who==='i'||S.chain.ids.indexOf(b.id)>=0)return;var seq=needSeq();if(!seq)return;if(b.type===seq[S.chain.ids.length])addLink(b);}
+function pointerUp(){S.finger.down=false;if(!S.chain.active)return;var seq=needSeq();var done=seq&&S.chain.ids.length===seq.length;if(done){if(S.chain.kind==='karte')castHeal();else castBlock();}else fizzle();S.chain={active:false,kind:null,ids:[]};if(S.chars.denta.st==='ready')setChar('denta','idle');if(S.chars.taru.st==='ready')setChar('taru','idle');}
+function startChain(b,kind){S.chain={active:true,kind:kind,ids:[b.id]};b.linked=true;SFX.link(0);burst(b.x,b.y,6,COL[b.who],1);var seq=kind==='block'?BLOCK:karte();setChar(casterOf(seq),'ready');}
+function addLink(b){S.chain.ids.push(b.id);b.linked=true;SFX.link(S.chain.ids.length-1);burst(b.x,b.y,6,COL[b.who],1);popup(b.x,b.y-38,S.chain.ids.length+'手',16,'#3a2a1a',0.7);}
+function fizzle(){S.chain.ids.forEach(function(id){var b=bubbleById(id);if(b)b.linked=false;});SFX.fizzle();}
+function castHeal(){
+  var ti=autoTarget();if(ti<0)return;var p=TILES[ti],n=S.chain.ids.length,seq=karte()||[],who=casterOf(seq),ch=S.chars[who],cell=S.cells[ti];
+  S.chain.ids.forEach(function(id){var b=bubbleById(id);if(!b)return;stream(b.x,b.y,ch.x,ch.y,10,COL[b.who]);killBubble(b,true);});
+  SFX.combo(n);
+  charCast(who,p.x,p.y,function(){cell.state='ok';cell.dz=null;cell.healT=S.t;cell.flipT=S.t;burst(p.x,p.y,22,'#fff',2);burst(p.x,p.y,12,COL[who==='taru'?'t':'d'],2);var pts=Math.round(100*n*(1+0.1*S.equip));S.score+=pts;popup(p.x,p.y-40,'なおった！ +'+pts,17,'#2f7a2f',1.4);S.shake=0.3;S.flash=0.2;S.flashColor=COL[who==='taru'?'t':'d'];if(S.mode==='play')later(1,refill);});
+}
+function castBlock(){
+  var ci=S.ill.cell,p=TILES[ci];
+  S.chain.ids.forEach(function(id){var b=bubbleById(id);if(b){stream(b.x,b.y,S.chars.taru.x,S.chars.taru.y,8,COL.t);killBubble(b,true);}});
+  S.ill.ids.forEach(function(id){var b=bubbleById(id);if(b){b.lit=false;burst(b.x,b.y,8,COL.i,1.2);killBubble(b,true);}});
+  S.ill.active=false;S.ill.ids=[];
+  charCast('taru',p.x,p.y,function(){S.shields[ci]=S.t+8;SFX.shield();burst(p.x,p.y,16,COL.t,1.6);var pts=Math.round(150*(1+0.1*S.equip));S.score+=pts;popup(p.x,p.y-40,'ブロック！',17,'#b0306a',1.4);S.chars.iru.scale=0.7;setChar('iru','wince');});
+  SFX.block();S.shake=0.15;
+}
+
+/* ===================== 病気・広がり・イル ===================== */
+function placeDisease(i,dzId,quiet){
+  var c=S.cells[i];if(c.state!=='ok')return false;var d=DZ[dzId],slow=S.mode==='play'?1.6:1;
+  c.state='sick';c.dz=dzId;c.spawnT=S.t;c.flipT=S.t;c.spreadAt=S.t+LINES[d.line].every*slow;c.evolveAt=d.evolve?S.t+d.evolve*slow:0;
+  var p=TILES[i];burst(p.x,p.y,12,COL.i,1.4);if(!quiet){SFX.growl();S.shake=0.1;setChar('iru','laugh');}return true;
+}
+function okTile(j){return j>=0&&S.cells[j].state==='ok'&&!(S.shields[j]&&S.shields[j]>S.t);}
+function spreadTargets(i){
+  var t=TILES[i],c=S.cells[i],d=DZ[c.dz],sp=LINES[d.line].spread,out=[];
+  if(sp==='arch'&&t.type==='tooth'){var cand=[];[-1,1].forEach(function(dd){var j=toothIdx(t.arch,t.ai+dd);if(j>=0&&okTile(j))cand.push(j);});if(cand.length)out.push(cand[Math.floor(Math.random()*cand.length)]);}
+  else if(sp==='gum'||sp==='cheek'){var want=sp==='gum'?'gum':'cheek';[[0,1],[0,-1],[1,0],[-1,0]].forEach(function(dd){var j=tileAt(t.r+dd[0],t.c+dd[1]);if(j>=0&&TILES[j].type===want&&okTile(j))out.push(j);});}
+  else if(sp==='molars'){['up','lo'].forEach(function(a){[0,1,8,9].forEach(function(ai){var j=toothIdx(a,ai);if(okTile(j))out.push(j);});});}
+  else if(sp==='front'){[3,4,5,6].forEach(function(ai){var j=toothIdx('up',ai);if(okTile(j))out.push(j);});}
+  return out;
+}
+function spreadFrom(i){
+  var c=S.cells[i];if(c.state!=='sick')return [];var tg=spreadTargets(i),p=TILES[i],id=c.dz;
+  tg.forEach(function(j,k){var q=TILES[j];stream(p.x,p.y,q.x,q.y,8,COL.i);later(0.35+k*0.05,function(){placeDisease(j,id,true);});});
+  if(tg.length){SFX.spread();setChar('iru','laugh');}
+  c.spreadAt=S.t+LINES[DZ[id].line].every*(S.mode==='play'?1.6:1);return tg;
+}
+function evolve(i){
+  var c=S.cells[i];if(c.state!=='sick')return;var d=DZ[c.dz],p=TILES[i];
+  if(!d.next||d.next==='lost'){c.state='lost';c.dz='lost';c.flipT=S.t;burst(p.x,p.y,18,'#3a3a3a',2);popup(p.x,p.y-40,'歯がぬけた…',16,'#7a1d2b',1.6);}
+  else{var old=d.code;c.dz=d.next;c.flipT=S.t;c.evolveAt=DZ[c.dz].evolve?S.t+DZ[c.dz].evolve*(S.mode==='play'?1.6:1):0;popup(p.x,p.y-40,'悪化！ '+old+'→'+DZ[c.dz].code,16,COL.i,1.6);}
+  burst(p.x,p.y,14,COL.i,1.6);SFX.evolve();S.shake=0.3;S.flash=0.2;S.flashColor=COL.i;setChar('iru','laugh');setChar('denta','wince');setChar('taru','wince');
+}
+function startIll(i,dur){
+  var c=S.cells[i];if(c.state!=='sick')return false;var ids=[];
+  BAD.forEach(function(t,k){var b=liveBubbles().find(function(x){return x.type===t&&!x.lit;});if(!b)b=spawnBubble(t,CUP.bot-40-k*20,0.2+k*0.3);ids.push(b.id);});
+  S.ill={active:true,cell:i,progress:0,dur:dur,ids:ids};SFX.warning();setChar('iru','cast');
+  if(S.mode==='play'){if(!hasType('brush'))spawnBubble('brush');if(!hasType('fluoride'))spawnBubble('fluoride');setCaption('イルが悪化をしかけてきた！ 歯ブラシ → フッ素 で割り込め');S.hint=S.t;}
+  return true;
+}
+function updateIll(dt){if(!S.ill.active)return;S.ill.progress+=dt/S.ill.dur;var lit=Math.floor(S.ill.progress*3);S.ill.ids.forEach(function(id,k){var b=bubbleById(id);if(b){b.lit=k<=lit;b.vy=-4;}});if(S.ill.progress>=1){var i=S.ill.cell;S.ill.ids.forEach(function(id){var b=bubbleById(id);if(b)killBubble(b,true);});S.ill.active=false;S.ill.ids=[];if(S.cells[i].state==='sick')evolve(i);}}
+function refill(){var live=liveBubbles();if(live.length>=7)return;var k=karte(),want=[];if(k)k.forEach(function(t){if(!hasType(t)&&want.indexOf(t)<0)want.push(t);});if(S.ill.active)BLOCK.forEach(function(t){if(!hasType(t)&&want.indexOf(t)<0)want.push(t);});var pool=['brush','fluoride','floss','rinse','anes','turbine','cr','light','stopmed','gargle','pain'];while(want.length+live.length<7)want.push(pool[Math.floor(Math.random()*pool.length)]);want.forEach(function(t,i){spawnBubble(t,CUP.bot-36-i*10);});}
+function ensureNeeded(){var need=[];var k=karte();if(k)k.forEach(function(t){if(!hasType(t)&&need.indexOf(t)<0)need.push(t);});if(S.ill.active)BLOCK.forEach(function(t){if(!hasType(t)&&need.indexOf(t)<0)need.push(t);});need.forEach(function(t){var live=liveBubbles();if(live.length>=8){var all=(k||[]).concat(S.ill.active?BLOCK:[]);for(var i=0;i<live.length;i++){if(!live[i].linked&&!live[i].lit&&live[i].who!=='i'&&all.indexOf(live[i].type)<0){killBubble(live[i],true);break;}}}spawnBubble(t);});}
+
+/* ===================== キャラ ===================== */
+function setChar(name,st){var ch=S.chars[name];ch.st=st;ch.stT=S.t;}
+function charCast(name,tx,ty,onHit){var ch=S.chars[name],hx=HOME[name].x,hy=HOME[name].y;var ox=tx+(name==='denta'?-34:34),oy=ty+10;ch.st='dash';ch.stT=S.t;ch.from={x:hx,y:hy};ch.to={x:ox,y:oy};later(0.26,function(){ch.st='swing';ch.stT=S.t;SFX.swing();later(0.14,function(){if(onHit)onHit();});});later(0.62,function(){ch.st='back';ch.stT=S.t;ch.from={x:ox,y:oy};ch.to={x:hx,y:hy};});later(0.92,function(){ch.x=hx;ch.y=hy;ch.st='cheer';ch.stT=S.t;});later(1.6,function(){if(ch.st==='cheer'){ch.st='idle';ch.stT=S.t;}});}
+function updateChars(dt){['denta','taru'].forEach(function(n){var ch=S.chars[n];var e=S.t-ch.stT;if(ch.st==='dash'||ch.st==='back'){var f=clamp(e/0.26,0,1),ee=f<0.5?2*f*f:1-Math.pow(-2*f+2,2)/2;ch.x=ch.from.x+(ch.to.x-ch.from.x)*ee;ch.y=ch.from.y+(ch.to.y-ch.from.y)*ee-Math.sin(f*Math.PI)*24;}if(ch.st==='wince'&&e>0.9){ch.st='idle';ch.stT=S.t;}});var iru=S.chars.iru;iru.scale+=(1-iru.scale)*dt*1.5;var ie=S.t-iru.stT;if((iru.st==='laugh'||iru.st==='wince')&&ie>1){iru.st='idle';iru.stT=S.t;}if(iru.st==='cast'&&!S.ill.active){iru.st='idle';iru.stT=S.t;}}
+
+/* ===================== 演出 ===================== */
+function burst(x,y,n,color,size){for(var i=0;i<n;i++){var a=rand(0,6.28),sp=rand(40,170);S.particles.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-40,life:rand(0.4,0.8),age:0,color:color,size:rand(2,5)*(size||1),g:220});}}
+function stream(x,y,tx,ty,n,color){for(var i=0;i<n;i++){S.particles.push({x:x,y:y,sx:x+rand(-8,8),sy:y+rand(-8,8),tx:tx,ty:ty,life:0.4+i*0.02,age:0,color:color,size:rand(3,6),stream:true});}}
+function popup(x,y,text,size,color,life){S.popups.push({x:x,y:y,text:text,size:size,color:color,life:life||1,age:0});}
+function updateFx(dt){for(var i=S.particles.length-1;i>=0;i--){var p=S.particles[i];p.age+=dt;if(p.age>=p.life){S.particles.splice(i,1);continue;}if(p.stream){var f=p.age/p.life,e=f*f*(3-2*f);p.x=p.sx+(p.tx-p.sx)*e;p.y=p.sy+(p.ty-p.sy)*e-Math.sin(f*Math.PI)*30;}else{p.vy+=p.g*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;}}for(var j=S.popups.length-1;j>=0;j--){var q=S.popups[j];q.age+=dt;if(q.age>=q.life)S.popups.splice(j,1);}S.shake=Math.max(0,S.shake-dt);S.flash=Math.max(0,S.flash-dt);S.fade=Math.max(0,S.fade-dt*1.6);var tr=terr();S.terrShown+=(tr.d-S.terrShown)*Math.min(1,dt*4);}
+
+/* ===================== 更新 ===================== */
+function update(dt){
+  S.t+=dt;
+  for(var i=S.events.length-1;i>=0;i--){if(S.t>=S.events[i].at){var ev=S.events.splice(i,1)[0];ev.fn();}}
+  if(S.scene==='board'){
+    var v=S.finger.down?0.3:1;
+    for(var k=S.bubbles.length-1;k>=0;k--){var b=S.bubbles[k];if(b.dead){if(S.t-b.dieT>0.25)S.bubbles.splice(k,1);continue;}b.scale=Math.min(1,b.scale+dt*4);b.y+=b.vy*v*dt;b.x+=Math.sin(S.t*1.3+b.phase)*9*dt;var cx=cupX(b.y);b.x=clamp(b.x,cx.l+b.r+4,cx.r-b.r-4);if(b.y<CUP.water+b.r-4&&!b.linked&&!b.lit){killBubble(b,true);burst(b.x,b.y,5,'#bfe0f5',1);}}
+    for(var c=0;c<TILES.length;c++){var cell=S.cells[c];if(cell.state!=='sick')continue;if(S.autoSpread&&cell.spreadAt&&S.t>=cell.spreadAt)spreadFrom(c);if(S.autoEvolve&&cell.evolveAt&&S.t>=cell.evolveAt){cell.evolveAt=0;evolve(c);}}
+    updateIll(dt);updateChars(dt);
+    if(S.mode==='play'&&!S.over){
+      S.timeLeft-=dt;if(S.timeLeft<=0){S.timeLeft=0;endPlay();}
+      else{S.ai.next-=dt;
+        if(S.ai.next<=0&&!S.ill.active){var sick=[];for(var s=0;s<TILES.length;s++){if(S.cells[s].state==='sick'&&DZ[S.cells[s].dz].next&&DZ[S.cells[s].dz].next!=='lost')sick.push(s);}
+          var sickCount=S.cells.filter(function(x){return x.state==='sick';}).length;
+          if(sick.length&&Math.random()<0.5){startIll(sick[Math.floor(Math.random()*sick.length)],7);}
+          else if(sickCount<4){var r=Math.random();var want=r<0.5?'tooth':r<0.85?'gum':'cheek';var ok=[];for(var u=0;u<TILES.length;u++){if(TILES[u].type===want&&S.cells[u].state==='ok')ok.push(u);}if(ok.length){var idx=ok[Math.floor(Math.random()*ok.length)];placeDisease(idx,want==='tooth'?'c1':want==='gum'?(Math.random()<0.5?'plaque':'gingivitis'):'stomatitis');setCaption('イルの手下があらわれた！ 病気の印をタップして、ちりょうカルテの順に泡をなぞろう');S.hint=S.t;}}
+          S.ai.next=rand(8,12);}
+        S.ai.refill-=dt;if(S.ai.refill<=0){S.ai.refill=1.4;ensureNeeded();if(liveBubbles().length<5)refill();}
+        if(S.t-S.hint>8&&!S.ill.active){setCaption(karte()?'病気の印をタップ → ちりょうカルテの順に泡をなぞる → 離すと発動':'パズルはぜんぶ白。イルが来るまで泡を眺めよう');S.hint=S.t;}
+      }
+    }
+  }
+  updateFx(dt);
+  if(S.gen&&S.task){if(S.task.update(dt))advance();}
+}
+
+/* ===================== 共通描画 ===================== */
+function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
+function txt(ctx,s,x,y,size,color,align,weight,outline){ctx.font=(weight||800)+' '+size+'px '+FONT;ctx.textAlign=align||'center';ctx.textBaseline='middle';if(outline){ctx.lineWidth=4;ctx.strokeStyle=outline;ctx.lineJoin='round';ctx.strokeText(s,x,y);}ctx.fillStyle=color;ctx.fillText(s,x,y);}
+function drawTooth(ctx,x,y,sz,fill,stroke){ctx.save();ctx.translate(x,y);var k=sz/24;ctx.scale(k,k);ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=1.6/k*1.2;ctx.beginPath();ctx.moveTo(-9,-6);ctx.bezierCurveTo(-5,-13,5,-13,9,-6);ctx.lineTo(10,1);ctx.lineTo(5,11);ctx.quadraticCurveTo(0,3,-5,11);ctx.lineTo(-10,1);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
+function drawCastle(ctx,x,y,sc,flag){ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);ctx.fillStyle='#f3ecda';ctx.strokeStyle='#8d7a55';ctx.lineWidth=2;rr(ctx,-16,-12,32,28,4);ctx.fill();ctx.stroke();[-16,-4,8].forEach(function(xx){ctx.fillRect(xx,-19,8,9);ctx.strokeRect(xx,-19,8,9);});ctx.fillStyle='#6b5a3a';rr(ctx,-4,3,8,13,4);ctx.fill();ctx.fillStyle=flag||'#d63b3b';ctx.beginPath();ctx.moveTo(0,-19);ctx.lineTo(0,-30);ctx.lineTo(10,-26);ctx.lineTo(0,-22);ctx.closePath();ctx.fill();ctx.restore();}
+function drawIcon(ctx,icon,cx,cy,size,color){
+  ctx.save();ctx.translate(cx,cy);var s=size/24;ctx.scale(s,s);ctx.fillStyle=color;ctx.strokeStyle=color;ctx.lineWidth=2.4;ctx.lineCap='round';ctx.lineJoin='round';
+  switch(icon){
+    case 'drop':ctx.beginPath();ctx.moveTo(0,-10);ctx.quadraticCurveTo(8,0,7,5);ctx.arc(0,5,7,0,Math.PI,false);ctx.quadraticCurveTo(-8,0,0,-10);ctx.fill();break;
+    case 'pill':ctx.rotate(-0.6);rr(ctx,-10,-4,20,8,4);ctx.fill();ctx.fillStyle='#fff';ctx.globalAlpha=0.55;ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(6,-4);ctx.arc(6,0,4,-Math.PI/2,Math.PI/2);ctx.lineTo(0,4);ctx.closePath();ctx.fill();break;
+    case 'syringe':ctx.rotate(-Math.PI/4);rr(ctx,-9,-3,12,6,1.5);ctx.stroke();ctx.beginPath();ctx.moveTo(3,0);ctx.lineTo(11,0);ctx.moveTo(-9,0);ctx.lineTo(-14,0);ctx.moveTo(-14,-3);ctx.lineTo(-14,3);ctx.stroke();break;
+    case 'drill':ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-8,-8);ctx.lineTo(1,1);ctx.stroke();ctx.beginPath();ctx.arc(-8,-8,2.6,0,6.29);ctx.stroke();ctx.beginPath();ctx.moveTo(1,1);ctx.lineTo(9,-1);ctx.lineTo(11,9);ctx.lineTo(1,11);ctx.closePath();ctx.fill();break;
+    case 'tooth':case 'silver':if(icon==='silver')ctx.fillStyle='#8c959e';ctx.beginPath();ctx.moveTo(-8,-6);ctx.bezierCurveTo(-4,-12,4,-12,8,-6);ctx.lineTo(9,0);ctx.lineTo(5,10);ctx.quadraticCurveTo(0,2,-5,10);ctx.lineTo(-9,0);ctx.closePath();ctx.fill();break;
+    case 'light':rr(ctx,-11,-3,14,7,2);ctx.fill();ctx.fillRect(3,-2,5,5);ctx.strokeStyle='#e0a41f';ctx.beginPath();ctx.moveTo(10,-5);ctx.lineTo(13,-9);ctx.moveTo(10,0);ctx.lineTo(15,0);ctx.moveTo(10,5);ctx.lineTo(13,9);ctx.stroke();break;
+    case 'brush':case 'nobrush':rr(ctx,-11,-2,15,4,2);ctx.fill();rr(ctx,4,-7,7,13,1.5);ctx.fill();if(icon==='nobrush'){ctx.strokeStyle='#d64545';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-10,10);ctx.lineTo(10,-10);ctx.stroke();}break;
+    case 'floss':ctx.beginPath();ctx.arc(-6,0,6,0,6.29);ctx.stroke();ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(11,-6);ctx.stroke();break;
+    case 'gargle':ctx.beginPath();ctx.moveTo(-7,-8);ctx.lineTo(7,-8);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.closePath();ctx.stroke();ctx.beginPath();ctx.moveTo(-5,0);ctx.quadraticCurveTo(-2,-4,0,0);ctx.quadraticCurveTo(2,4,5,0);ctx.stroke();break;
+    case 'nerve':ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-9,0);ctx.lineTo(-4,-7);ctx.lineTo(1,3);ctx.lineTo(6,-6);ctx.lineTo(10,1);ctx.stroke();break;
+    case 'cup':ctx.beginPath();ctx.moveTo(-6,-8);ctx.lineTo(6,-8);ctx.lineTo(4,8);ctx.lineTo(-4,8);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(2,-8);ctx.lineTo(6,-14);ctx.stroke();break;
+    case 'candy':ctx.beginPath();ctx.arc(0,0,5,0,6.29);ctx.fill();ctx.beginPath();ctx.moveTo(-5,0);ctx.lineTo(-11,-5);ctx.lineTo(-11,5);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(11,-5);ctx.lineTo(11,5);ctx.closePath();ctx.fill();break;
+  }
+  ctx.restore();
+}
+function drawDenta(ctx,x,y,sc,ch){
+  ch=ch||{st:'idle',stT:0};var e=S.t-ch.stT,bob=Math.sin(S.t*3)*2;var swing=ch.st==='swing'?Math.sin(clamp(e/0.16,0,1)*Math.PI):0,ready=ch.st==='ready'?1:0,cheer=ch.st==='cheer'?Math.abs(Math.sin(e*8))*8:0,wince=ch.st==='wince';
+  ctx.save();ctx.translate(x,y+bob-cheer);ctx.scale(sc,sc);if(ch.st==='dash')ctx.rotate(0.15);
+  ctx.fillStyle='#d63b3b';ctx.beginPath();ctx.moveTo(-6,-6);ctx.quadraticCurveTo(-30,10,-26,36);ctx.quadraticCurveTo(-10,28,4,34);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#2f5fbf';rr(ctx,-16,4,32,30,8);ctx.fill();ctx.strokeStyle='#e0a41f';ctx.lineWidth=2;rr(ctx,-16,4,32,30,8);ctx.stroke();ctx.fillStyle='#4aa3ff';ctx.beginPath();ctx.moveTo(0,10);ctx.lineTo(5,17);ctx.lineTo(0,24);ctx.lineTo(-5,17);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#2a4a8f';rr(ctx,-14,32,11,10,3);ctx.fill();rr(ctx,3,32,11,10,3);ctx.fill();
+  ctx.fillStyle='#fff';ctx.strokeStyle='#cfd8e6';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-20,-6);ctx.bezierCurveTo(-22,-30,22,-30,20,-6);ctx.lineTo(18,8);ctx.quadraticCurveTo(10,14,4,8);ctx.quadraticCurveTo(0,2,-4,8);ctx.quadraticCurveTo(-10,14,-18,8);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle='#e0a41f';ctx.beginPath();ctx.moveTo(-16,-18);ctx.lineTo(-12,-28);ctx.lineTo(-6,-20);ctx.lineTo(0,-30);ctx.lineTo(6,-20);ctx.lineTo(12,-28);ctx.lineTo(16,-18);ctx.closePath();ctx.fill();ctx.fillStyle='#4aa3ff';ctx.beginPath();ctx.moveTo(0,-27);ctx.lineTo(3,-22);ctx.lineTo(0,-17);ctx.lineTo(-3,-22);ctx.closePath();ctx.fill();
+  var ey=wince?-6:-8;ctx.fillStyle='#1f3f8f';ctx.beginPath();ctx.ellipse(-7,ey,3,wince?1.5:4,0,0,6.29);ctx.fill();ctx.beginPath();ctx.ellipse(7,ey,3,wince?1.5:4,0,0,6.29);ctx.fill();
+  if(ready||ch.st==='swing'||ch.st==='dash'){ctx.strokeStyle='#1f3f8f';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-11,-15);ctx.lineTo(-4,-12);ctx.moveTo(11,-15);ctx.lineTo(4,-12);ctx.stroke();}
+  ctx.fillStyle='#ffb3b3';ctx.beginPath();ctx.arc(-12,-2,2.5,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(12,-2,2.5,0,6.29);ctx.fill();
+  ctx.strokeStyle='#8b2b2b';ctx.lineWidth=2;ctx.beginPath();if(wince){ctx.moveTo(-4,3);ctx.quadraticCurveTo(0,0,4,3);}else{ctx.moveTo(-4,1);ctx.quadraticCurveTo(0,5,4,1);}ctx.stroke();
+  ctx.save();ctx.translate(18,6);ctx.rotate(-0.9-ready*0.4+swing*2.2);ctx.fillStyle='#2f5fbf';rr(ctx,-3,-40,6,44,3);ctx.fill();ctx.fillStyle='#e0a41f';rr(ctx,-6,-52,12,16,4);ctx.fill();ctx.fillStyle='#fff';rr(ctx,-9,-50,4,12,1.5);ctx.fill();ctx.restore();
+  if(swing>0.3){ctx.strokeStyle='rgba(74,163,255,'+(0.8*swing)+')';ctx.lineWidth=5;ctx.beginPath();ctx.arc(18,6,44,-2.2,-0.2);ctx.stroke();}
+  ctx.restore();
+}
+function drawTaru(ctx,x,y,sc,ch){
+  ch=ch||{st:'idle',stT:0};var e=S.t-ch.stT,bob=Math.sin(S.t*3+1)*2;var cast=ch.st==='swing'?Math.sin(clamp(e/0.16,0,1)*Math.PI):0,ready=ch.st==='ready'?1:0,cheer=ch.st==='cheer'?Math.abs(Math.sin(e*8))*8:0,wince=ch.st==='wince';
+  ctx.save();ctx.translate(x,y+bob-cheer);ctx.scale(sc,sc);if(ch.st==='dash')ctx.rotate(-0.15);
+  ctx.fillStyle='#e2508a';ctx.beginPath();ctx.moveTo(6,-4);ctx.quadraticCurveTo(30,12,26,36);ctx.quadraticCurveTo(10,30,-4,34);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#8a4a1e';ctx.beginPath();ctx.arc(-16,4,9,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(16,6,9,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(-18,16,7,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(18,18,7,0,6.29);ctx.fill();
+  ctx.fillStyle='#f4a3c0';ctx.beginPath();ctx.moveTo(-12,6);ctx.lineTo(12,6);ctx.lineTo(19,34);ctx.lineTo(-19,34);ctx.closePath();ctx.fill();ctx.fillStyle='#fff3e6';ctx.beginPath();ctx.moveTo(-19,34);for(var k=0;k<6;k++){ctx.quadraticCurveTo(-19+k*6.3+3,40,-19+(k+1)*6.3,34);}ctx.lineTo(19,30);ctx.lineTo(-19,30);ctx.closePath();ctx.fill();ctx.fillStyle='#e0a41f';ctx.fillRect(-12,12,24,3);
+  ctx.fillStyle='#fbe3d3';rr(ctx,-12,34,9,10,3);ctx.fill();rr(ctx,3,34,9,10,3);ctx.fill();
+  ctx.fillStyle='#fbe3d3';ctx.beginPath();ctx.arc(0,-8,17,0,6.29);ctx.fill();ctx.fillStyle='#8a4a1e';ctx.beginPath();ctx.arc(0,-16,17,Math.PI,0);ctx.lineTo(17,-10);ctx.quadraticCurveTo(0,-4,-17,-10);ctx.closePath();ctx.fill();
+  var ey=wince?-7:-8;ctx.fillStyle='#5a3a1a';ctx.beginPath();ctx.ellipse(-6,ey,3,wince?1.5:4,0,0,6.29);ctx.fill();ctx.beginPath();ctx.ellipse(6,ey,3,wince?1.5:4,0,0,6.29);ctx.fill();
+  ctx.fillStyle='#ffb3b3';ctx.beginPath();ctx.arc(-11,-2,2.5,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(11,-2,2.5,0,6.29);ctx.fill();
+  ctx.strokeStyle='#b0306a';ctx.lineWidth=2;ctx.beginPath();if(wince){ctx.moveTo(-3,3);ctx.quadraticCurveTo(0,1,3,3);}else{ctx.moveTo(-3,1);ctx.quadraticCurveTo(0,4,3,1);}ctx.stroke();
+  ctx.fillStyle='#e2508a';ctx.beginPath();ctx.ellipse(0,-22,24,6,0,0,6.29);ctx.fill();ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(4,-52);ctx.lineTo(16,-24);ctx.closePath();ctx.fill();ctx.fillStyle='#ff3d8f';ctx.beginPath();ctx.moveTo(6,-40);ctx.lineTo(10,-34);ctx.lineTo(6,-28);ctx.lineTo(2,-34);ctx.closePath();ctx.fill();
+  ctx.save();ctx.translate(-18,4);ctx.rotate(0.6-ready*0.5-cast*0.9);ctx.fillStyle='#2a2a2a';rr(ctx,-2,-44,4,48,2);ctx.fill();ctx.fillStyle='#ff3d8f';ctx.beginPath();ctx.moveTo(0,-60);ctx.lineTo(8,-48);ctx.lineTo(0,-38);ctx.lineTo(-8,-48);ctx.closePath();ctx.fill();ctx.restore();
+  if(cast>0.2){ctx.strokeStyle='rgba(226,80,138,'+(0.8*cast)+')';ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,-6,40+cast*20,0,6.29);ctx.stroke();}
+  ctx.restore();
+}
+function drawIru(ctx,x,y,sc,ch){
+  ch=ch||{st:'idle',stT:0,scale:1};var e=S.t-ch.stT;var laugh=ch.st==='laugh'?Math.abs(Math.sin(e*10))*5:0;
+  ctx.save();ctx.translate(x,y-laugh);ctx.scale(sc*(ch.scale||1),sc*(ch.scale||1));
+  ctx.beginPath();for(var a=0;a<9;a++){var ang=a/9*6.283;var r=18+Math.sin(S.t*3+a*1.7)*3;var xx=Math.cos(ang)*r,yy=Math.sin(ang)*r*0.85;if(a===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);}ctx.closePath();ctx.fillStyle='#3b2a4d';ctx.fill();if(ch.st==='cast'){ctx.strokeStyle='#d64545';ctx.lineWidth=2;ctx.stroke();}
+  ctx.fillStyle='#ff4d4d';ctx.beginPath();ctx.arc(-6,-3,3,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(6,-3,3,0,6.29);ctx.fill();
+  ctx.strokeStyle='#ff4d4d';ctx.lineWidth=2;ctx.beginPath();if(ch.st==='wince'){ctx.moveTo(-6,7);ctx.quadraticCurveTo(0,3,6,7);}else{ctx.moveTo(-7,4);ctx.quadraticCurveTo(0,10,7,4);}ctx.stroke();ctx.restore();
+}
+function drawFinger(ctx){if(!S.finger.visible)return;var f=S.finger;ctx.save();ctx.shadowColor='rgba(0,0,0,0.35)';ctx.shadowBlur=10;ctx.shadowOffsetY=4;ctx.beginPath();ctx.arc(f.x,f.y,f.down?12:15,0,6.29);ctx.fillStyle='rgba(255,255,255,0.92)';ctx.fill();ctx.shadowColor='transparent';ctx.strokeStyle=f.down?'#f2b632':'#8d7a55';ctx.lineWidth=3;ctx.stroke();ctx.restore();}
+function drawFxLayer(ctx){S.particles.forEach(function(p){ctx.globalAlpha=1-p.age/p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,6.29);ctx.fill();});ctx.globalAlpha=1;S.popups.forEach(function(q){var f=q.age/q.life;ctx.globalAlpha=f<0.75?1:1-(f-0.75)/0.25;var sc=f<0.15?0.6+f/0.15*0.5:1.1-Math.min(0.1,f*0.1);ctx.save();ctx.translate(q.x,q.y-f*26);ctx.scale(sc,sc);txt(ctx,q.text,0,0,q.size,q.color,'center',800,'rgba(255,255,255,0.9)');ctx.restore();});ctx.globalAlpha=1;}
+function parchment(ctx){ctx.fillStyle='#eadfc3';ctx.fillRect(0,0,W,GH);ctx.strokeStyle='#d6c69f';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-20,90);ctx.bezierCurveTo(80,60,160,120,260,80);ctx.bezierCurveTo(330,50,380,90,420,60);ctx.moveTo(-20,700);ctx.bezierCurveTo(100,670,200,720,300,680);ctx.bezierCurveTo(360,660,400,700,420,690);ctx.stroke();}
+
+/* ===================== 盤の描画 ===================== */
+function drawTile(ctx,i){
+  var t=TILES[i],c=S.cells[i];var fl=S.t-c.flipT;var sx=1;if(fl<0.36)sx=Math.abs(Math.cos(fl/0.36*Math.PI));var heal=S.t-c.healT;var sc=1;if(heal<0.6)sc=1+Math.sin(heal/0.6*Math.PI)*0.15;
+  ctx.save();ctx.translate(t.x,t.y);ctx.scale(Math.max(0.05,sx)*sc,sc);
+  var fill,stroke,label='',lc='#2a0a4a',pri=0;
+  if(c.state==='sick'){var d=DZ[c.dz];pri=d.pri;fill=pri<=1?'#c9a8ee':pri===2?'#a675e0':'#7b3fbf';stroke='#4a1f7a';label=d.code;lc=pri>=3?'#fff':'#2a0a4a';}
+  else if(c.state==='lost'){fill='#2a2a2a';stroke='#000';label='欠';lc='#fff';}
+  else if(t.type==='tooth'){fill=c.lit?'#fff8e6':'#ffffff';stroke=c.lit?'#f2b632':'#6a8fd6';}
+  else if(t.type==='gum'){fill='#f6c6cf';stroke='#e8a3b3';}
+  else if(t.type==='cheek'){fill='#f9dcc8';stroke='#ecc3a8';}
+  else{fill='#e88a94';stroke='#d3707c';}
+  ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=t.type==='tooth'||c.state!=='ok'?2:1.5;rr(ctx,-19,-19,38,38,7);ctx.fill();ctx.stroke();
+  if(c.state==='ok'){if(t.type==='tooth')drawTooth(ctx,0,2,22,'#f4f7fb','#c9d8ee');else if(t.type==='gum'){ctx.fillStyle='#f0aebb';ctx.beginPath();ctx.arc(0,0,4,0,6.29);ctx.fill();}else if(t.type==='tongue'){ctx.fillStyle='#f2a5ad';ctx.beginPath();ctx.arc(-8,-6,2,0,6.29);ctx.fill();ctx.beginPath();ctx.arc(7,5,2,0,6.29);ctx.fill();}}
+  else if(c.state==='sick'&&t.type==='tooth'){drawTooth(ctx,0,2,22,'#ecdcff','#7b3fbf');}
+  if(label){ctx.fillStyle=c.state==='lost'?'#4a4470':'#2a0a4a';rr(ctx,0,-19,19,13,6);ctx.fill();txt(ctx,label,9.5,-12.5,8,'#fff');}
+  if(c.state==='sick'&&S.mode==='play'&&c.evolveAt){var f=clamp(1-(c.evolveAt-S.t)/(DZ[c.dz].evolve*1.6),0,1);ctx.fillStyle='#ffd166';ctx.fillRect(-16,15,32*f,3);}
+  ctx.restore();
+  if(S.shields[i]&&S.shields[i]>S.t){ctx.beginPath();ctx.arc(t.x,t.y,24,0,6.29);ctx.strokeStyle='rgba(226,80,138,'+(0.5+0.3*Math.sin(S.t*6))+')';ctx.lineWidth=3;ctx.stroke();}
+  if(S.target===i&&c.state==='sick'){var pu=S.t-c.pulseT;var g=4+(pu<0.4?Math.sin(pu/0.4*Math.PI)*5:0);ctx.strokeStyle='#ffd166';ctx.lineWidth=3;rr(ctx,t.x-19-g,t.y-19-g,38+g*2,38+g*2,9);ctx.stroke();}
+  if(S.ill.active&&S.ill.cell===i){var prg=S.ill.progress;ctx.beginPath();ctx.arc(t.x,t.y,26,-Math.PI/2,-Math.PI/2+prg*6.283);ctx.strokeStyle='#ff4d6d';ctx.lineWidth=3;ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#ff4d6d';rr(ctx,t.x-42,t.y-44,84,18,9);ctx.fill();txt(ctx,'イルが悪化中！',t.x,t.y-35,10,'#fff');}
+}
+function drawBubble(ctx,b,needed){
+  var sc=b.scale;if(b.dead)sc=1+(S.t-b.dieT)/0.25*0.5;var alpha=b.dead?1-(S.t-b.dieT)/0.25:1;var shake=S.t-b.shakeT<0.3?Math.sin((S.t-b.shakeT)*60)*4:0;
+  ctx.save();ctx.globalAlpha=Math.max(0,alpha);ctx.translate(b.x+shake,b.y);ctx.scale(sc,sc);
+  var isNext=needed.indexOf(b.type)>=0&&!b.linked&&b.who!=='i';var col=COL[b.who];
+  if(isNext){var pr=(S.t*1.6)%1;ctx.beginPath();ctx.arc(0,0,b.r+5+pr*12,0,6.29);ctx.strokeStyle='rgba(242,182,50,'+(0.6*(1-pr))+')';ctx.lineWidth=4;ctx.stroke();}
+  if(b.lit){ctx.beginPath();ctx.arc(0,0,b.r+7,0,6.29);ctx.fillStyle='rgba(123,63,191,0.35)';ctx.fill();}
+  ctx.shadowColor='rgba(0,0,0,0.2)';ctx.shadowBlur=6;ctx.shadowOffsetY=2;ctx.beginPath();ctx.arc(0,0,b.r,0,6.29);ctx.fillStyle=b.who==='i'?'#e7d6f5':b.who==='t'?'#fff0f5':'#f0f5ff';ctx.fill();ctx.shadowColor='transparent';
+  ctx.beginPath();ctx.ellipse(-8,-9,7,4,-0.5,0,6.29);ctx.fillStyle='rgba(255,255,255,0.8)';ctx.fill();
+  ctx.lineWidth=b.linked?5:isNext?5:3;ctx.strokeStyle=b.linked||isNext?'#f2b632':col;ctx.beginPath();ctx.arc(0,0,b.r,0,6.29);ctx.stroke();
+  drawIcon(ctx,TYPES[b.type].icon,0,-2,22,b.who==='i'?'#4a2a6a':'#2a2a3a');
+  txt(ctx,TYPES[b.type].name,0,b.r+11,10,b.who==='i'?'#4a2a6a':'#3a2a1a','center',800,'rgba(255,255,255,0.85)');
+  ctx.restore();
+}
+function drawChain(ctx){if(!S.chain.active)return;var pts=[];S.chain.ids.forEach(function(id){var b=bubbleById(id);if(b)pts.push([b.x,b.y]);});if(S.finger.down)pts.push([S.finger.x,S.finger.y]);if(pts.length<2)return;var col=S.chain.kind==='block'?COL.t:(casterOf(needSeq()||[])==='taru'?COL.t:'#f2b632');ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(var i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=12;ctx.stroke();ctx.strokeStyle=col;ctx.lineWidth=6;ctx.setLineDash([10,8]);ctx.lineDashOffset=-S.t*60;ctx.stroke();ctx.setLineDash([]);}
+function drawIllChain(ctx){if(!S.ill.active)return;var pts=[];S.ill.ids.forEach(function(id){var b=bubbleById(id);if(b&&b.lit)pts.push([b.x,b.y]);});if(!pts.length)return;var p=TILES[S.ill.cell];ctx.lineCap='round';ctx.strokeStyle=COL.i;ctx.lineWidth=5;ctx.setLineDash([8,6]);ctx.lineDashOffset=-S.t*40;ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(var i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);if(pts.length===3)ctx.lineTo(p.x,p.y);ctx.stroke();ctx.setLineDash([]);}
+function drawHUD(ctx){
+  ctx.fillStyle='#fffaf0';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,8,8,232,50,10);ctx.fill();ctx.stroke();
+  var ti=autoTarget();
+  if(S.attack){ctx.fillStyle='#1f1830';ctx.strokeStyle='#6a4a9a';ctx.lineWidth=2;rr(ctx,8,8,232,50,10);ctx.fill();ctx.stroke();txt(ctx,'あくかカルテ　プラーク → 歯肉炎',16,22,11,'#e7d6f5','left');txt(ctx,'ジュース → お菓子 → サボり',16,44,11,'#fff','left');}
+  else if(ti<0){txt(ctx,'ちりょうカルテ',16,22,11,'#3a2a1a','left');txt(ctx,'いまは病気なし',16,42,11,'#6b5a3a','left',500);}
+  else{var d=DZ[S.cells[ti].dz];txt(ctx,'ちりょうカルテ　'+d.name+' '+d.code,16,22,11,'#3a2a1a','left');
+    var seq=d.karte,done=S.chain.active&&S.chain.kind==='karte'?S.chain.ids.length:0;
+    for(var i=0;i<seq.length;i++){var x=28+i*42,y=44;if(i<seq.length-1){ctx.strokeStyle='#a88b58';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+11,y);ctx.lineTo(x+31,y);ctx.stroke();}
+      ctx.beginPath();ctx.arc(x,y,10,0,6.29);
+      if(i<done){ctx.fillStyle='#6aa84f';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x-4,y);ctx.lineTo(x-1,y+3);ctx.lineTo(x+5,y-3);ctx.stroke();}
+      else if(i===done){ctx.fillStyle='#fff8e6';ctx.fill();ctx.strokeStyle='#f2b632';ctx.lineWidth=3;ctx.stroke();drawIcon(ctx,TYPES[seq[i]].icon,x,y,13,'#2a2a3a');}
+      else{ctx.fillStyle='#e3d9c2';ctx.fill();ctx.strokeStyle=COL[TYPES[seq[i]].who];ctx.lineWidth=2;ctx.stroke();drawIcon(ctx,TYPES[seq[i]].icon,x,y,13,'#8d7a55');}
+      txt(ctx,TYPES[seq[i]].name,x,y+16,7,'#6b5a3a','center',500);}
+  }
+  ctx.fillStyle='#3b2a4d';rr(ctx,248,8,60,22,11);ctx.fill();var tl=Math.max(0,Math.ceil(S.timeLeft));txt(ctx,Math.floor(tl/60)+':'+(tl%60<10?'0':'')+(tl%60),278,19,13,'#fff');
+  var tr=terr();ctx.fillStyle='#fffaf0';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,248,36,134,22,11);ctx.fill();ctx.stroke();
+  var w=118,dx=w*S.terrShown/TILES.length;ctx.fillStyle='#6a8fd6';rr(ctx,256,41,Math.max(2,dx),12,6);ctx.fill();ctx.fillStyle=COL.i;if(dx<w-2){rr(ctx,256+dx,41,w-dx,12,6);ctx.fill();}
+  txt(ctx,'デンタ '+tr.d,262,47,8,'#fff','left');txt(ctx,'イル '+tr.i,370,47,8,'#fff','right');
+  txt(ctx,'イル（仮）',316,19,8,'#4a1f7a','left',500);
+}
+function drawBoardScene(ctx){
+  parchment(ctx);
+  if(S.attack){ctx.fillStyle='#2b2438';ctx.fillRect(0,0,W,GH);}
+  ctx.fillStyle='#d8b37f';rr(ctx,BX-7,BY-7,COLS*TILE+14,ROWS*TILE+14,12);ctx.fill();
+  for(var i=0;i<TILES.length;i++)drawTile(ctx,i);
+  // コップ
+  ctx.fillStyle='#dff0fb';ctx.strokeStyle='#8fbde0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(CUP.xl0,CUP.top);ctx.lineTo(CUP.xr0,CUP.top);ctx.lineTo(CUP.xr1,CUP.bot);ctx.lineTo(CUP.xl1,CUP.bot);ctx.closePath();ctx.fill();ctx.stroke();
+  var wl=cupX(CUP.water);ctx.fillStyle='rgba(191,224,245,0.85)';ctx.beginPath();ctx.moveTo(wl.l,CUP.water);ctx.lineTo(wl.r,CUP.water);ctx.lineTo(CUP.xr1,CUP.bot);ctx.lineTo(CUP.xl1,CUP.bot);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();for(var x=wl.l;x<=wl.r;x+=4){var y=CUP.water+Math.sin(x*0.08+S.t*2)*2;if(x===wl.l)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
+  for(var k=0;k<5;k++){var bx=90+k*52+Math.sin(S.t+k)*4,by=CUP.bot-12-((S.t*18+k*37)%160);var alpha=clamp(1-(CUP.bot-by)/170,0,0.8);ctx.fillStyle='rgba(255,255,255,'+alpha+')';ctx.beginPath();ctx.arc(bx,by,3+k%3,0,6.29);ctx.fill();}
+  drawIllChain(ctx);var needed=nextNeeded();S.bubbles.forEach(function(b){drawBubble(ctx,b,needed);});drawChain(ctx);
+  drawDenta(ctx,S.chars.denta.x,S.chars.denta.y,0.8,S.chars.denta);drawTaru(ctx,S.chars.taru.x,S.chars.taru.y,0.8,S.chars.taru);drawIru(ctx,S.chars.iru.x,S.chars.iru.y+6,0.9,S.chars.iru);
+  txt(ctx,'デンタ',HOME.denta.x,HOME.denta.y+46,9,'#2f5fbf','center',800,'rgba(255,255,255,0.8)');txt(ctx,'タルー',HOME.taru.x,HOME.taru.y+46,9,'#b0306a','center',800,'rgba(255,255,255,0.8)');
+  drawHUD(ctx);
+  if(S.attack){txt(ctx,'イルの番　リサのパズルで90秒',195,76,11,'#b9a6d6','center',500);txt(ctx,'あなた＝イル',HOME.iru.x,HOME.iru.y+46,9,'#e7d6f5');}
+  if(S.arrive){ctx.fillStyle='rgba(20,14,10,0.55)';ctx.fillRect(0,500,W,260);ctx.fillStyle='#efe6f8';ctx.strokeStyle='#7b3fbf';ctx.lineWidth=3;rr(ctx,24,520,342,200,16);ctx.fill();ctx.stroke();drawIru(ctx,60,562,1.1);txt(ctx,'ゆうきが あなたのパズルで',90,552,14,'#4a1f7a','left');txt(ctx,'あばれた！',90,572,14,'#4a1f7a','left');txt(ctx,'まもりLv4 → 1段階 弱まって届いた',90,596,11,'#3a2a1a','left',500);txt(ctx,'きょうのパズルで治す。治すまで残る',90,614,11,'#3a2a1a','left',500);ctx.fillStyle='#2f5fbf';rr(ctx,60,650,270,44,22);ctx.fill();txt(ctx,'きょうのパズルへ',195,672,14,'#fff');}
+}
+
+/* ===================== 他の場面 ===================== */
+var LOOP={clinic:{x:70,y:150,l:'医院'},read:{x:195,y:90,l:'よみこむ'},play:{x:195,y:250,l:'あそぶ'},home:{x:60,y:330,l:'しゅぎょう',s:'親'},bad:{x:330,y:330,l:'わるいこと',s:'友達'},team:{x:300,y:450,l:'チームバトル',s:'学校'},result:{x:120,y:450,l:'けっか'}};
+var LOOP_PATH=['clinic','read','play','home','play','bad','play','team','result','clinic'];
+function drawLoop(ctx,cx,cy,sc,hi,prog){
+  ctx.save();ctx.translate(cx,cy);ctx.scale(sc,sc);
+  function seg(a,b){var A=LOOP[a],B=LOOP[b];ctx.strokeStyle='#c9b9a3';ctx.lineWidth=4;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.stroke();}
+  seg('clinic','read');seg('read','play');seg('play','home');seg('play','bad');seg('play','team');seg('team','result');seg('home','result');seg('bad','result');
+  ctx.strokeStyle='#c9b9a3';ctx.lineWidth=4;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(LOOP.result.x,LOOP.result.y);ctx.quadraticCurveTo(-10,300,LOOP.clinic.x,LOOP.clinic.y+30);ctx.stroke();ctx.setLineDash([]);
+  for(var k in LOOP){var n=LOOP[k];var isHi=hi===k;var r=k==='play'?46:32;
+    ctx.beginPath();ctx.arc(n.x,n.y,r+(isHi?6:0),0,6.29);ctx.fillStyle=k==='play'?'#f0f5ff':k==='bad'?'#efe6f8':k==='home'?'#fff0f5':k==='team'?'#eef7e6':'#fffaf0';ctx.fill();ctx.strokeStyle=isHi?'#f2b632':(k==='play'?'#2f5fbf':k==='bad'?'#7b3fbf':k==='home'?'#e2508a':k==='team'?'#6aa84f':'#a88b58');ctx.lineWidth=isHi?5:3;ctx.stroke();
+    if(k==='play')drawDenta(ctx,n.x,n.y-6,0.6);else if(k==='home')drawTaru(ctx,n.x,n.y-4,0.5);else if(k==='bad')drawIru(ctx,n.x,n.y-4,0.9);else if(k==='team')drawCastle(ctx,n.x,n.y-2,1.0,'#2f5fbf');else if(k==='clinic'){ctx.fillStyle='#e2508a';rr(ctx,n.x-10,n.y-14,20,20,4);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(n.x,n.y-10);ctx.lineTo(n.x,n.y+2);ctx.moveTo(n.x-6,n.y-4);ctx.lineTo(n.x+6,n.y-4);ctx.stroke();}else if(k==='read'){ctx.fillStyle='#3b2a4d';ctx.strokeStyle='#f2b632';ctx.lineWidth=2;rr(ctx,n.x-9,n.y-14,18,24,3);ctx.fill();ctx.stroke();}else{ctx.fillStyle='#fff';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,n.x-9,n.y-13,18,22,3);ctx.fill();ctx.stroke();}
+    txt(ctx,n.l,n.x,n.y+r+14,k==='play'?14:11,'#3a2a1a','center',800,'rgba(255,255,255,0.85)');if(n.s)txt(ctx,'（'+n.s+'）',n.x,n.y+r+28,10,'#6b5a3a','center',500,'rgba(255,255,255,0.85)');}
+  if(prog!==undefined){var seglen=LOOP_PATH.length-1;var f=Math.min(0.9999,prog)*seglen;var i=Math.floor(f),t=f-i;var A=LOOP[LOOP_PATH[i]],B=LOOP[LOOP_PATH[Math.min(i+1,seglen)]];var x=A.x+(B.x-A.x)*t,y=A.y+(B.y-A.y)*t;ctx.beginPath();ctx.arc(x,y,10,0,6.29);ctx.fillStyle='#f2b632';ctx.fill();ctx.beginPath();ctx.arc(x,y,16,0,6.29);ctx.strokeStyle='rgba(242,182,50,0.5)';ctx.lineWidth=3;ctx.stroke();}
+  ctx.restore();
+}
+function drawIntroScene(ctx){parchment(ctx);var sc=S.sc;txt(ctx,sc.title||'大冒険！デンタルキングダム',195,44,20,'#3a2a1a');txt(ctx,sc.sub||'',195,68,11,'#6b5a3a','center',500);drawLoop(ctx,0,80,1,sc.hi,sc.prog);if(sc.foot)txt(ctx,sc.foot,195,720,12,'#3a2a1a','center',800,'rgba(255,255,255,0.85)');}
+function drawTitleScene(ctx){parchment(ctx);var sc=S.sc;ctx.fillStyle='rgba(59,42,77,0.06)';ctx.fillRect(0,0,W,GH);drawLoop(ctx,60,60,0.7,sc.hi);ctx.fillStyle='#fffaf0';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,24,470,342,200,16);ctx.fill();ctx.stroke();txt(ctx,sc.num||'',195,506,13,'#8d7a55');txt(ctx,sc.title||'',195,546,26,'#3a2a1a');txt(ctx,sc.sub||'',195,584,13,'#6b5a3a','center',500);if(sc.who)txt(ctx,sc.who,195,626,12,'#b0306a');}
+function drawNavScene(ctx){parchment(ctx);ctx.fillStyle='#fffaf0';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,12,12,236,32,16);ctx.fill();ctx.stroke();txt(ctx,'ゆうき　まもりLv3　せめLv4',130,28,11,'#3a2a1a');ctx.fillStyle='#3b2a4d';rr(ctx,258,12,120,32,16);ctx.fill();txt(ctx,'土曜 襲来まで 2日',318,28,10,'#fff');
+  txt(ctx,'なにをする？',195,82,22,'#3a2a1a');
+  ctx.fillStyle='#f0f5ff';ctx.strokeStyle='#2f5fbf';ctx.lineWidth=3;rr(ctx,20,100,350,150,20);ctx.fill();ctx.stroke();drawDenta(ctx,80,178,0.95);txt(ctx,'あそぶ',150,150,22,'#2f5fbf','left');txt(ctx,'パズル 90秒',150,176,12,'#3a2a1a','left',500);ctx.fillStyle='#ff4d6d';rr(ctx,150,190,150,26,13);ctx.fill();txt(ctx,'イルの手下が 2つ',225,204,11,'#fff');
+  var items=[['しゅぎょう','歯磨き3分・おうちカルテ','#e2508a','#fff0f5','taru'],['わるいこと','イルを育てて 送る','#7b3fbf','#efe6f8','iru'],['チームバトル','南小 vs 北小','#6aa84f','#eef7e6','castle'],['よみこむ','もらったカードを読む','#8d6a1a','#fff8e6','card']];
+  items.forEach(function(it,k){var cx=20+(k%2)*180,cy=266+(k>>1)*180;ctx.fillStyle=it[3];ctx.strokeStyle=it[2];ctx.lineWidth=3;rr(ctx,cx,cy,170,164,18);ctx.fill();ctx.stroke();if(it[4]==='taru')drawTaru(ctx,cx+85,cy+64,0.75);else if(it[4]==='iru')drawIru(ctx,cx+85,cy+58,1.3);else if(it[4]==='castle')drawCastle(ctx,cx+85,cy+62,1.6,'#2f5fbf');else{ctx.fillStyle='#3b2a4d';ctx.strokeStyle='#f2b632';ctx.lineWidth=2;rr(ctx,cx+69,cy+36,32,44,4);ctx.fill();ctx.stroke();}txt(ctx,it[0],cx+85,cy+118,17,it[2]);txt(ctx,it[1],cx+85,cy+140,10,'#3a2a1a','center',500);});
+  ctx.fillStyle='#f7efd9';ctx.strokeStyle='#6b5a3a';ctx.lineWidth=3;rr(ctx,20,642,350,100,18);ctx.fill();ctx.stroke();txt(ctx,'けっか',110,684,17,'#6b5a3a','left');txt(ctx,'今週のまとめ　日曜に出る',110,704,10,'#3a2a1a','left',500);
+  if(S.sc.blink){var b=S.sc.blink;var pos={play:[20,100,350,150],home:[20,266,170,164],bad:[200,266,170,164],team:[20,446,170,164],read:[200,446,170,164],result:[20,642,350,100]}[b];if(pos){ctx.strokeStyle='rgba(242,182,50,'+(0.5+0.5*Math.sin(S.t*6))+')';ctx.lineWidth=6;rr(ctx,pos[0]-4,pos[1]-4,pos[2]+8,pos[3]+8,22);ctx.stroke();}}
+}
+
+function drawHubScene(ctx){
+  var sc=S.sc;parchment(ctx);
+  ctx.fillStyle='#8fb56a';ctx.beginPath();ctx.ellipse(195,400,175,290,0,0,6.29);ctx.fill();ctx.fillStyle='#7ea55b';ctx.beginPath();ctx.ellipse(120,330,60,30,0,0,6.29);ctx.fill();ctx.beginPath();ctx.ellipse(280,520,70,34,0,0,6.29);ctx.fill();
+  ctx.strokeStyle='#6fa8d6';ctx.lineWidth=12;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(40,600);ctx.bezierCurveTo(120,520,140,460,195,420);ctx.bezierCurveTo(250,380,330,300,360,200);ctx.stroke();ctx.strokeStyle='#a9d1ec';ctx.lineWidth=4;ctx.stroke();
+  [[60,250],[330,420],[100,560],[300,640],[250,150]].forEach(function(p){ctx.fillStyle='#6b4b2a';ctx.fillRect(p[0]-1.5,p[1],3,8);ctx.fillStyle='#5e8f4a';ctx.beginPath();ctx.arc(p[0],p[1]-4,9,0,6.29);ctx.fill();});
+  function node(name,x,y,drawFn,label,sub){var open=sc.open&&sc.open.indexOf(name)>=0;var blink=sc.blink===name?(0.5+0.5*Math.sin(S.t*6)):0;drawFn();if(!open){ctx.fillStyle='rgba(234,223,195,0.82)';ctx.beginPath();ctx.arc(x,y-6,50,0,6.29);ctx.fill();txt(ctx,'？',x,y-6,22,'#a88b58');}else{if(blink>0){ctx.strokeStyle='rgba(242,182,50,'+blink+')';ctx.lineWidth=5;ctx.beginPath();ctx.arc(x,y-6,54,0,6.29);ctx.stroke();}txt(ctx,label,x,y+42,13,'#3a2a1a','center',800,'rgba(255,255,255,0.85)');if(sub)txt(ctx,sub,x,y+58,9,'#6b5a3a','center',500,'rgba(255,255,255,0.85)');}}
+  node('board',195,330,function(){drawCastle(ctx,195,320,2.6);},'デンタルパズル','きょうのパズルへ　げんきな歯 18/20');
+  node('nest',80,180,function(){ctx.fillStyle='#3b2a4d';ctx.beginPath();ctx.moveTo(38,200);ctx.bezierCurveTo(44,140,116,140,122,200);ctx.lineTo(118,222);ctx.lineTo(42,222);ctx.closePath();ctx.fill();ctx.fillStyle='#1f1830';ctx.beginPath();ctx.ellipse(80,200,24,14,0,0,6.29);ctx.fill();drawIru(ctx,80,196,0.7);},'イルのアジト','C1 育成中 あと1日');
+  node('clinic',310,180,function(){ctx.fillStyle='#fff';ctx.strokeStyle='#8d7a55';ctx.lineWidth=2;rr(ctx,270,150,80,58,6);ctx.fill();ctx.stroke();ctx.fillStyle='#e2508a';rr(ctx,298,158,24,24,4);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(310,162);ctx.lineTo(310,178);ctx.moveTo(302,170);ctx.lineTo(318,170);ctx.stroke();},'医院','カードを読む・図鑑・合成');
+  node('school',85,520,function(){drawCastle(ctx,85,514,1.4,'#2f5fbf');},'チームバトル','南小　土曜にイル襲来');
+  node('home',305,520,function(){ctx.fillStyle='#c9834a';ctx.beginPath();ctx.moveTo(272,516);ctx.lineTo(305,484);ctx.lineTo(338,516);ctx.closePath();ctx.fill();ctx.fillStyle='#f3ecda';ctx.strokeStyle='#8d7a55';ctx.lineWidth=2;ctx.fillRect(280,516,50,28);ctx.strokeRect(280,516,50,28);ctx.fillStyle='#6b5a3a';ctx.fillRect(299,526,12,18);},'おうち','歯磨き3分・おうちカルテ');
+  ctx.fillStyle='#f7efd9';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,10,10,210,30,15);ctx.fill();ctx.stroke();txt(ctx,'ゆうき　まもりLv3　せめLv4',115,25,11,'#3a2a1a');
+  ctx.fillStyle='#3b2a4d';rr(ctx,228,10,152,30,15);ctx.fill();txt(ctx,'土曜 イル襲来まで '+(sc.days||2)+'日',304,25,11,'#fff');
+  if(sc.notif){ctx.fillStyle='#ff4d6d';ctx.beginPath();ctx.arc(348,150,11,0,6.29);ctx.fill();txt(ctx,'1',348,151,11,'#fff');txt(ctx,'リサから届いた',300,120,10,'#3a2a1a','center',800,'rgba(255,255,255,0.85)');}
+  txt(ctx,'王国の地図　ここから、どこへでも',195,720,12,'#6b5a3a','center',500);
+}
+function drawNestScene(ctx){
+  var sc=S.sc;ctx.fillStyle='#2b2438';ctx.fillRect(0,0,W,GH);
+  txt(ctx,'イルのアジト',195,40,22,'#e7d6f5');txt(ctx,'えさや わるいことをして 育てる。友達に送って こまらせよう',195,66,11,'#b9a6d6','center',500);
+  drawIru(ctx,340,42,1.2);
+  var dishes=[{y:96,name:sc.d1name||'軽い虫歯',code:sc.d1code||'C1',day:sc.d1day||'1日目',pct:sc.d1pct||0.2,act:sc.d1act||'育成中'},{y:316,name:'プラーク',code:'P',day:'1日目',pct:0.33,act:'育成中'},{y:536,name:'',code:'',day:'',pct:0,act:'病気カードを置く'}];
+  dishes.forEach(function(d,k){var y=d.y;ctx.fillStyle='#3b2f52';ctx.strokeStyle='#6a4a9a';ctx.lineWidth=2;rr(ctx,24,y,342,200,18);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#1f1830';ctx.strokeStyle='#8b6ad0';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(120,y+96,76,40,0,0,6.29);ctx.fill();ctx.stroke();ctx.fillStyle='#2e2445';ctx.beginPath();ctx.ellipse(120,y+92,68,32,0,0,6.29);ctx.fill();
+    if(d.name){var big=d.code==='C2';var sz=big?46:34;var fill=big?'#a675e0':'#c9a8ee';ctx.fillStyle=fill;ctx.globalAlpha=0.35;ctx.beginPath();ctx.arc(120,y+92,sz/2+8,0,6.29);ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle='#4a1f7a';ctx.lineWidth=2;rr(ctx,120-sz/2,y+92-sz/2,sz,sz,8);ctx.fill();ctx.stroke();txt(ctx,d.code,120,y+93,big?16:13,big?'#fff':'#2a0a4a');
+      txt(ctx,d.name,270,y+60,15,'#fff');txt(ctx,d.day,270,y+82,11,'#b9a6d6','center',500);
+      ctx.fillStyle='#1f1830';rr(ctx,210,y+100,124,10,5);ctx.fill();ctx.fillStyle='#a675e0';rr(ctx,210,y+100,124*clamp(d.pct,0.02,1),10,5);ctx.fill();txt(ctx,'つぎの段階まで',270,y+124,10,'#b9a6d6','center',500);
+      var col=d.act.indexOf('送')>=0?'#8b3fe0':'#5a4a7a';ctx.fillStyle=col;rr(ctx,204,y+140,132,36,18);ctx.fill();txt(ctx,d.act,270,y+158,12,'#fff');}
+    else{txt(ctx,'＋',120,y+96,30,'#6a4a9a');txt(ctx,'空き',270,y+82,13,'#b9a6d6');ctx.fillStyle='#5a4a7a';rr(ctx,204,y+140,132,36,18);ctx.fill();txt(ctx,d.act,270,y+158,12,'#fff');}
+  });
+  if(sc.feed){var f=sc.feed;var e=clamp((S.t-f.t)/0.9,0,1);var x=f.x+(120-f.x)*e,y=f.y+(96+92-f.y)*e-Math.sin(e*Math.PI)*60;ctx.beginPath();ctx.arc(x,y,20,0,6.29);ctx.fillStyle='#e7d6f5';ctx.fill();ctx.strokeStyle=COL.i;ctx.lineWidth=3;ctx.stroke();drawIcon(ctx,'cup',x,y,18,'#4a2a6a');}
+  txt(ctx,'自分の口は清潔なまま。育つのは巣の中だけ',195,748,10,'#b9a6d6','center',500);
+}
+function drawClinicScene(ctx){
+  var sc=S.sc;ctx.fillStyle='#fffaf3';ctx.fillRect(0,0,W,GH);
+  ctx.fillStyle='#fff';ctx.strokeStyle='#8d7a55';ctx.lineWidth=2;rr(ctx,20,20,350,70,10);ctx.fill();ctx.stroke();ctx.fillStyle='#e2508a';rr(ctx,36,34,42,42,6);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(57,42);ctx.lineTo(57,68);ctx.moveTo(44,55);ctx.lineTo(70,55);ctx.stroke();txt(ctx,'〇〇歯科',96,46,16,'#3a2a1a','left');txt(ctx,'もらったカードを読む・図鑑・合成',96,70,11,'#6b5a3a','left',500);
+  // camera frame
+  ctx.fillStyle='#1a1a1a';rr(ctx,40,110,310,200,12);ctx.fill();
+  var st=sc.step||0;
+  if(st<2){ctx.strokeStyle='#fff';ctx.lineWidth=3;[[80,140],[310,140],[80,280],[310,280]].forEach(function(p,k){ctx.beginPath();var dx=k%2?-1:1,dy=k<2?1:-1;ctx.moveTo(p[0],p[1]+dy*20);ctx.lineTo(p[0],p[1]);ctx.lineTo(p[0]+dx*20,p[1]);ctx.stroke();});
+    var ly=140+((S.t*80)%140);ctx.strokeStyle='#e2508a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(90,ly);ctx.lineTo(300,ly);ctx.stroke();
+    if(st===1){ctx.save();ctx.translate(195,210);ctx.rotate(-0.15);ctx.fillStyle='#3b2a4d';ctx.strokeStyle='#f2b632';ctx.lineWidth=3;rr(ctx,-42,-60,84,120,6);ctx.fill();ctx.stroke();ctx.fillStyle='#5a4a7a';ctx.fillRect(-34,-50,68,60);txt(ctx,'麻酔',0,30,13,'#fff');txt(ctx,'No.1',0,48,8,'#fff');ctx.restore();txt(ctx,'読みこみ中…',195,296,10,'#fff');}
+    else txt(ctx,'カードを枠に入れてね',195,296,11,'#fff');}
+  else{var e=clamp((S.t-(sc.stepT||0))/0.8,0,1);ctx.save();ctx.translate(195,210);var sx=Math.abs(Math.cos(e*Math.PI));ctx.scale(Math.max(0.05,sx),1);ctx.fillStyle=e<0.5?'#3b2a4d':'#fffaf0';ctx.strokeStyle='#f2b632';ctx.lineWidth=4;rr(ctx,-46,-66,92,132,8);ctx.fill();ctx.stroke();if(e>=0.5){ctx.fillStyle='#e6ecf7';ctx.fillRect(-38,-56,76,64);drawIcon(ctx,'syringe',0,-24,36,'#2a2a3a');txt(ctx,'麻酔',0,30,14,'#3a2a1a');txt(ctx,'デンタの治療　No.1',0,50,8,'#6b5a3a','center',500);}ctx.restore();
+    if(e>=1){for(var k=0;k<8;k++){var a=k/8*6.283+S.t;ctx.fillStyle='#f2b632';ctx.beginPath();ctx.arc(195+Math.cos(a)*90,210+Math.sin(a)*70,3,0,6.29);ctx.fill();}txt(ctx,'麻酔 を手に入れた！',195,296,13,'#ffe9b0');}}
+  // zukan
+  txt(ctx,'図鑑',40,340,13,'#3a2a1a','left');txt(ctx,'治療カード 42　病気カード 21',120,340,10,'#6b5a3a','left',500);
+  var got=sc.got||9;var names=['麻酔','抜歯','入れ歯','痛み止め','とめる薬','洗口剤','神経治療','歯磨き粉','紙コップ','抗菌薬','銀歯','矯正','マスク','フロス','ブリッジ','うがい','ピンセット','タービン','しあげ磨き','グローブ','エプロン','CR照射器','CR','ミラー','ライト','レントゲン','歯ブラシ','フッ素'];
+  for(var i=0;i<28;i++){var x=40+(i%7)*47,y=356+Math.floor(i/7)*56;var have=i<got||(sc.step>=2&&i===0);ctx.fillStyle=have?'#fff':'#eee4d2';ctx.strokeStyle=have?'#2f5fbf':'#d9cbb3';ctx.lineWidth=have?2:1;rr(ctx,x,y,40,48,5);ctx.fill();ctx.stroke();if(have){txt(ctx,names[i],x+20,y+18,7,'#3a2a1a');if(i===0&&sc.dup){ctx.fillStyle='#f2b632';rr(ctx,x+24,y-4,20,14,7);ctx.fill();txt(ctx,'×2',x+34,y+3,8,'#3a2a1a');}}else txt(ctx,'？',x+20,y+24,12,'#c9bda3');}
+  ctx.fillStyle='#f0f5ff';ctx.strokeStyle='#2f5fbf';ctx.lineWidth=2;rr(ctx,40,590,310,120,12);ctx.fill();ctx.stroke();
+  txt(ctx,'せめ Lv'+(sc.level||3),56,614,14,'#2f5fbf','left');txt(ctx,'読んだ治療カードの種類と、医院カードの登録で上がる',56,636,10,'#6b5a3a','left',500);
+  ctx.fillStyle='#e6dcc6';rr(ctx,56,652,278,12,6);ctx.fill();ctx.fillStyle='#2f5fbf';rr(ctx,56,652,278*(sc.levelPct||0.6),12,6);ctx.fill();
+  txt(ctx,'手数は変わらない。1手の威力が上がる',56,686,11,'#3a2a1a','left',500);
+}
+function drawSchoolScene(ctx){
+  var sc=S.sc;parchment(ctx);
+  txt(ctx,'チームバトル',195,34,20,'#3a2a1a');txt(ctx,'みんなの歯磨きの「率」で、城が育つ',195,58,11,'#6b5a3a','center',500);
+  ctx.fillStyle='#8fb56a';ctx.beginPath();ctx.ellipse(195,330,170,70,0,0,6.29);ctx.fill();
+  drawCastle(ctx,195,270,3.2,'#2f5fbf');[[70,330],[320,340],[100,380],[290,290]].forEach(function(p){ctx.fillStyle='#6b4b2a';ctx.fillRect(p[0]-1.5,p[1],3,8);ctx.fillStyle='#5e8f4a';ctx.beginPath();ctx.arc(p[0],p[1]-4,9,0,6.29);ctx.fill();});
+  txt(ctx,'南小の王国　Lv7',195,130,18,'#3a2a1a');
+  var pct=sc.pct||0.62;ctx.fillStyle='#e6dcc6';rr(ctx,60,150,270,16,8);ctx.fill();ctx.fillStyle='#6aa84f';rr(ctx,60,150,270*pct,16,8);ctx.fill();txt(ctx,'きょう みがいた '+Math.round(pct*100)+'%　（48人中 '+Math.round(48*pct)+'人）',195,182,11,'#3a2a1a');
+  if(sc.siege){for(var k=0;k<5;k++){drawIru(ctx,80+k*56+Math.sin(S.t*2+k)*6,(sc.siegeY||100)+Math.cos(S.t*3+k)*4,0.7+(k%2)*0.2);}txt(ctx,'土曜　イル襲来！　みんなの守りで受け止める',195,(sc.siegeY||100)+40,11,'#4a1f7a','center',800,'rgba(255,255,255,0.85)');}
+  drawDenta(ctx,120,360,0.6);drawTaru(ctx,270,360,0.6);
+  // VS
+  ctx.fillStyle='#fffaf0';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,24,440,342,150,14);ctx.fill();ctx.stroke();
+  txt(ctx,'チームバトル　南小 vs 北小',195,464,14,'#3a2a1a');
+  var a=sc.vsA||0.74,b=sc.vsB||0.61;
+  [['南小',a,'#2f5fbf',110],['北小',b,'#a33',280]].forEach(function(t){ctx.fillStyle='#e6dcc6';rr(ctx,t[3]-60,500,120,14,7);ctx.fill();ctx.fillStyle=t[2];rr(ctx,t[3]-60,500,120*t[1],14,7);ctx.fill();txt(ctx,t[0]+'　'+Math.round(t[1]*100)+'%',t[3],486,12,t[2]);});
+  ctx.fillStyle='#3b2a4d';ctx.beginPath();ctx.arc(195,507,16,0,6.29);ctx.fill();txt(ctx,'VS',195,508,10,'#fff');
+  txt(ctx,'各員が 攻め1回（相手のパズルでイルの90秒）・守り1回（きょうのパズル）',195,536,9,'#3a2a1a','center',500);
+  txt(ctx,'人数ではなく率で勝負。小さい学校も勝てる',195,556,9,'#6b5a3a','center',500);
+  txt(ctx,sc.foot||'相手を待たない。平均点で勝負',195,576,9,'#a33','center',500);
+  ctx.fillStyle='#f7efd9';ctx.strokeStyle='#a88b58';rr(ctx,24,606,342,120,12);ctx.fill();ctx.stroke();txt(ctx,'チームに入る',40,628,12,'#3a2a1a','left');
+  txt(ctx,'友達のコードで入る／つくる。学校名は書かない',40,650,11,'#3a2a1a','left',500);txt(ctx,'呼び名だけ：南小、〇〇塾、部活、スポーツクラブ',40,670,11,'#3a2a1a','left',500);txt(ctx,'複数に入れる。医院や学校の手間はゼロ',40,690,11,'#6b5a3a','left',500);txt(ctx,'順位はチーム内と、対戦相手との間だけ',40,710,11,'#6b5a3a','left',500);
+}
+function drawHomeScene(ctx){
+  var sc=S.sc;ctx.fillStyle='#fff6f0';ctx.fillRect(0,0,W,GH);
+  txt(ctx,'おうち',195,34,20,'#3a2a1a');txt(ctx,'歯磨き3分は、パズルの歯の順に。磨いた歯が光る',195,58,11,'#6b5a3a','center',500);
+  // mini board
+  var mx=95,my=80,ts=25;ctx.fillStyle='#d8b37f';rr(ctx,mx-5,my-5,COLS*ts+10,ROWS*ts+10,8);ctx.fill();
+  var lit=sc.lit||0;var order=[];for(var i=0;i<10;i++)order.push(toothIdx('up',9-i));for(var j=0;j<10;j++)order.push(toothIdx('lo',j));
+  for(var t=0;t<TILES.length;t++){var tl=TILES[t];var x=mx+tl.c*ts,y=my+tl.r*ts;var pos=order.indexOf(t);var on=pos>=0&&pos<lit;var now=pos===lit;var fill=tl.type==='tooth'?(on?'#fff8e6':'#fff'):tl.type==='gum'?'#f6c6cf':tl.type==='cheek'?'#f9dcc8':'#e88a94';ctx.fillStyle=fill;ctx.strokeStyle=now?'#f2b632':on?'#e0a41f':tl.type==='tooth'?'#6a8fd6':'#e8a3b3';ctx.lineWidth=now?3:on?2:1;rr(ctx,x+1,y+1,ts-2,ts-2,5);ctx.fill();ctx.stroke();if(tl.type==='tooth')drawTooth(ctx,x+ts/2,y+ts/2+1,13,on?'#ffe9b0':'#f4f7fb','#c9d8ee');}
+  // timer ring
+  var remain=sc.remain!==undefined?sc.remain:180;var f=1-remain/180;ctx.beginPath();ctx.arc(195,392,52,0,6.29);ctx.strokeStyle='#e6dcc6';ctx.lineWidth=10;ctx.stroke();ctx.beginPath();ctx.arc(195,392,52,-Math.PI/2,-Math.PI/2+f*6.283);ctx.strokeStyle='#e2508a';ctx.lineWidth=10;ctx.lineCap='round';ctx.stroke();
+  txt(ctx,Math.floor(remain/60)+':'+(remain%60<10?'0':'')+Math.floor(remain%60),195,388,24,'#3a2a1a');txt(ctx,sc.zone||'いま：上の右',195,412,10,'#6b5a3a','center',500);
+  drawTaru(ctx,80,402,0.7);txt(ctx,'タルーがついてる',80,448,9,'#b0306a');
+  // parent karte
+  ctx.fillStyle='#fff';ctx.strokeStyle='#e2508a';ctx.lineWidth=2;rr(ctx,24,470,342,200,14);ctx.fill();ctx.stroke();
+  txt(ctx,'おうちカルテ　保護者が採点する4つ',40,494,13,'#b0306a','left');txt(ctx,'できた日だけ加点。できなかった日は何も起きない',40,512,9,'#6b5a3a','left',500);
+  var items=[['歯みがきをした','まもり +2'],['姿勢よく座れた','まもり +1'],['甘いものをひかえた','まもり +1'],['よく噛んで食べた','まもり +1']];var on=sc.checks||[false,false,false,false];
+  items.forEach(function(it,k){var y=528+k*36;ctx.fillStyle='#fff6f0';rr(ctx,40,y,310,30,10);ctx.fill();txt(ctx,it[0],52,y+15,11,'#3a2a1a','left');txt(ctx,it[1],236,y+15,9,'#b0306a','left',500);ctx.fillStyle=on[k]?'#e2508a':'#e6dcc6';rr(ctx,304,y+6,40,18,9);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(on[k]?335:313,y+15,7,0,6.29);ctx.fill();});
+  var lv=sc.enamel||3;ctx.fillStyle='#fff0f5';ctx.strokeStyle='#e2508a';rr(ctx,24,686,342,50,12);ctx.fill();ctx.stroke();txt(ctx,'まもり Lv'+lv,40,704,13,'#b0306a','left');ctx.fillStyle='#f4d3e0';rr(ctx,140,698,200,12,6);ctx.fill();ctx.fillStyle='#e2508a';rr(ctx,140,698,200*(sc.enamelPct||0.7),12,6);ctx.fill();txt(ctx,'毎日で上がる。下がらない',40,724,9,'#6b5a3a','left',500);
+}
+function drawSundayScene(ctx){
+  var sc=S.sc;parchment(ctx);
+  txt(ctx,'日曜のけっか',195,40,22,'#3a2a1a');txt(ctx,'今週の王国',195,64,11,'#6b5a3a','center',500);
+  ctx.fillStyle='#fffaf0';ctx.strokeStyle='#a88b58';ctx.lineWidth=2;rr(ctx,24,84,342,150,14);ctx.fill();ctx.stroke();
+  txt(ctx,'デンタルパズル',40,108,13,'#3a2a1a','left');var p=sc.p||0.92;ctx.fillStyle='#e6dcc6';rr(ctx,40,122,310,18,9);ctx.fill();ctx.fillStyle='#6a8fd6';rr(ctx,40,122,310*p,18,9);ctx.fill();txt(ctx,'デンタ '+Math.round(p*100)+'%',52,131,10,'#fff','left');txt(ctx,'イル '+Math.round((1-p)*100)+'%',338,131,10,'#fff','right');
+  txt(ctx,'治した病気 14　ブロック 5　抜けた歯 0',40,160,11,'#3a2a1a','left');txt(ctx,'今週の最高コンボ：4手（ひどい虫歯）',40,182,11,'#3a2a1a','left');txt(ctx,'歯磨き 6／7日　まもり Lv3 → Lv4',40,204,11,'#b0306a','left');
+  ctx.fillStyle='#f0f5ff';ctx.strokeStyle='#2f5fbf';rr(ctx,24,250,342,110,14);ctx.fill();ctx.stroke();
+  txt(ctx,'チームバトル',40,274,13,'#2f5fbf','left');txt(ctx,'南小 74点 vs 北小 61点　南小の勝ち',40,298,12,'#3a2a1a','left');txt(ctx,'あなたの貢献：攻め 4　守り 3　歯磨き 6日',40,320,11,'#3a2a1a','left');txt(ctx,'土曜の襲来を、48人で受け止めた',40,342,11,'#6b5a3a','left',500);
+  ctx.fillStyle='#fff8e6';ctx.strokeStyle='#f2b632';rr(ctx,24,376,342,150,14);ctx.fill();ctx.stroke();
+  txt(ctx,'今日わかったこと',40,400,13,'#8d6a1a','left');
+  ['プラークは 歯ブラシ → うがい で治る','放っておくと歯肉炎。3手いる','歯ぐきの病気は横に広がる。予防はタルー','イルの悪化は 歯ブラシ → フッ素 で止められる'].forEach(function(s,k){txt(ctx,'・'+s,40,426+k*22,11,'#3a2a1a','left');});
+  drawDenta(ctx,90,600,0.8,{st:'cheer',stT:S.t-0.1});drawTaru(ctx,300,600,0.8,{st:'cheer',stT:S.t-0.1});
+  ctx.fillStyle='#fff0f5';ctx.strokeStyle='#e2508a';rr(ctx,24,660,342,70,12);ctx.fill();ctx.stroke();txt(ctx,'保護者に週報が届く',40,684,12,'#b0306a','left');txt(ctx,'歯磨き 6/7　ジュースなし 4/7　歯科医からの一言「奥歯の裏も忘れずに」',40,706,9,'#3a2a1a','left',500);
+}
+function draw(ctx){
+  ctx.save();if(S.shake>0){ctx.translate(rand(-1,1)*S.shake*14,rand(-1,1)*S.shake*14);}
+  if(S.scene==='board')drawBoardScene(ctx);else if(S.scene==='intro')drawIntroScene(ctx);else if(S.scene==='title')drawTitleScene(ctx);else if(S.scene==='nav')drawNavScene(ctx);else if(S.scene==='hub')drawHubScene(ctx);else if(S.scene==='nest')drawNestScene(ctx);else if(S.scene==='clinic')drawClinicScene(ctx);else if(S.scene==='school')drawSchoolScene(ctx);else if(S.scene==='home')drawHomeScene(ctx);else if(S.scene==='sunday')drawSundayScene(ctx);
+  drawFxLayer(ctx);drawFinger(ctx);ctx.restore();
+  if(S.flash>0){ctx.globalAlpha=S.flash*1.6;ctx.fillStyle=S.flashColor;ctx.fillRect(0,0,W,GH);ctx.globalAlpha=1;}
+  if(S.fade>0){ctx.globalAlpha=Math.min(1,S.fade);ctx.fillStyle='#1a1512';ctx.fillRect(0,0,W,GH);ctx.globalAlpha=1;}
+  ctx.fillStyle='#1a1512';ctx.fillRect(0,GH,W,H-GH);
+}
+
+/* ===================== 台本 ===================== */
+function wait(sec){var t=0;return {update:function(dt){t+=dt;return t>=sec;}};}
+function untilIllDone(){return {update:function(){return !S.ill.active;}};}
+function fingerTo(getT,dur){var t=0,sx,sy,st=false;return {update:function(dt){if(!st){sx=S.finger.x;sy=S.finger.y;st=true;}t+=dt;var f=Math.min(1,t/dur),e=f<0.5?2*f*f:1-Math.pow(-2*f+2,2)/2;var tg=getT();var x=sx+(tg.x-sx)*e,y=sy+(tg.y-sy)*e;if(S.finger.down)pointerMove(x,y);else{S.finger.x=x;S.finger.y=y;}return f>=1;}};}
+function toB(b){return function(){return {x:b.x,y:b.y};};}
+function toT(i){var p=TILES[i];return function(){return p;};}
+function down(){pointerDown(S.finger.x,S.finger.y);}
+function up(){pointerUp();}
+function findB(type){return liveBubbles().find(function(b){return b.type===type&&!b.linked;});}
+function goScene(name){S.fade=1.2;S.scene=name;S.sc={};S.finger.visible=false;S.particles=[];S.popups=[];S.attack=false;S.arrive=null;}
+function* traceSeq(types){for(var i=0;i<types.length;i++){var b=findB(types[i]);if(!b)b=spawnBubble(types[i],CUP.bot-60-i*10,0.2+0.6*((i*0.41)%1));yield fingerTo(toB(b),i===0?0.8:0.75);if(i===0)down();yield wait(0.15);}yield wait(0.2);up();}
+function resetBoard(){S.cells=[];for(var i=0;i<TILES.length;i++)S.cells.push({state:'ok',dz:null,spawnT:-9,flipT:-9,healT:-9,spreadAt:0,evolveAt:0,pulseT:-9,lit:false});S.bubbles=[];S.chain={active:false,kind:null,ids:[]};S.target=-1;S.ill={active:false,cell:-1,progress:0,dur:5,ids:[]};S.shields={};S.terrShown=TILES.length;['denta','taru','iru'].forEach(function(n){S.chars[n].x=HOME[n].x;S.chars[n].y=HOME[n].y;S.chars[n].st='idle';S.chars[n].stT=S.t;});S.chars.iru.scale=1;S.timeLeft=90;}
+function* title(num,name,sub,hi,who){goScene('title');S.sc={num:num,title:name,sub:sub,hi:hi,who:who};setCaption(name+'　'+sub);yield wait(3);}
+function anim(from,to,sec){var t=0;return {update:function(dt){t+=dt;var f=Math.min(1,t/sec);S.sc.prog=from+(to-from)*f;return f>=1;}};}
+function* chIntro(){
+  goScene('intro');S.sc={title:'大冒険！デンタルキングダム',sub:'なぜ、こう作ったか',prog:0};
+  setCaption('「大冒険！デンタルキングダム」は、歯医者さんでもらうカードから始まる、歯のゲームです。');S.sc.hi='clinic';yield wait(3.6);
+  setCaption('医院でカードをもらい、読み込む。カードがそのまま、ゲームの手になります。');S.sc.hi='read';yield anim(0,2/9,2.4);yield wait(1);
+  setCaption('一人で遊ぶパズルを真ん中に置き、3つの人を巻き込みます。');S.sc.hi='play';yield anim(2/9,3/9,1.2);yield wait(2.4);
+  setCaption('親御さんを巻き込む：しゅぎょう。歯磨き、姿勢、甘いもの、よく噛む。親が採点します。');S.sc.hi='home';yield anim(3/9,4/9,1.2);yield wait(3.2);
+  setCaption('友達を巻き込む：わるいこと。病気を育てて友達に送る。子どもは、悪役をやりたがるからです。');S.sc.hi='bad';yield anim(4/9,6/9,1.6);yield wait(3.2);
+  setCaption('学校を巻き込む：チームバトル。学校、塾、部活、スポーツクラブ。自分の居場所で戦います。');S.sc.hi='team';yield anim(6/9,8/9,1.6);yield wait(3.2);
+  setCaption('遊びながら、歯の病気と、治し方と、予防を覚える。');S.sc.hi='result';yield anim(8/9,1,1);yield wait(2.6);
+  setCaption('新しいカードは医院でしか手に入らない。毎日5分、土曜に守り、日曜に見て、月に1回医院へ。');S.sc.hi='clinic';S.sc.foot='毎日5分　土曜に守る　日曜に見る　月に1回 医院へ';yield anim(0,1,3.2);yield wait(1.4);
+  goScene('nav');setCaption('最初の画面は「なにをする？」。動詞だけ。輪の6つが、そのままボタンになっています。');yield wait(2.4);
+  var order=['play','home','bad','team','read','result'];for(var i=0;i<order.length;i++){S.sc.blink=order[i];yield wait(0.55);}S.sc.blink=null;yield wait(1);
+}
+function* chRead(){
+  yield* title('第1章','よみこむ','医院でもらったカードを読む','read');
+  goScene('clinic');S.sc.step=0;S.sc.got=8;S.sc.level=3;S.sc.levelPct=0.6;
+  setCaption('医院でもらった紙のカードを、カメラで読む。');yield wait(2.4);
+  S.sc.step=1;SFX.tick();yield wait(1.6);S.sc.step=2;S.sc.stepT=S.t;SFX.chime();setCaption('「麻酔」を手に入れた！ 図鑑に入り、泡になる。');yield wait(2.8);
+  setCaption('治療カードは泡に。病気カードはちりょうカルテの知識に。医院カードはかかりつけに。道具カードは装備に。');yield wait(3.6);
+  S.sc.level=4;S.sc.levelPct=0.75;SFX.chime();setCaption('読んだ種類が増えると「せめ」が上がる。手数は変わらず、1手の威力が上がる。');yield wait(3.2);
+  setCaption('ここで手に入るもの：新しい泡と、せめ。そして医院に行く理由。');yield wait(3);
+}
+function* chCore(){
+  yield* title('第2章','遊びはこれだけ','20秒で分かる','play');
+  goScene('board');resetBoard();fillCup(['brush','gargle','fluoride','floss','rinse']);
+  var g=tileAt(8,3);placeDisease(g,'plaque');S.target=g;yield wait(1.2);
+  S.finger.x=195;S.finger.y=560;S.finger.visible=true;yield fingerTo(toT(g),0.7);down();up();yield wait(1);
+  yield* traceSeq(['brush','gargle']);yield wait(2.2);
+  setCaption('病気の印をタップ → ちりょうカルテ → 泡を順になぞる → 離す → 治る。遊びは、これだけ。');yield wait(3);S.finger.visible=false;
+}
+function* chPlay(){
+  yield* title('第3章','あそぶ','デンタルパズル','play');
+  goScene('board');resetBoard();fillCup(['fluoride','stopmed','brush','gargle','floss','rinse','anes']);
+  setCaption('パズルは80まいのタイル。白いのが歯、ピンクが歯ぐき、赤が舌、はじが頬。');yield wait(3.2);
+  var g1=tileAt(8,3);placeDisease(g1,'gingivitis');S.target=g1;setCaption('イルの手下が病気を置く。放っておくと、広がって、悪化する。');yield wait(2);spreadFrom(g1);yield wait(2);
+  setCaption('歯ぐきの病気は横に広がる。病気の種類で、広がり方がちがう。');yield wait(2.4);
+  setCaption('イルが悪化をしかけてきた。ジュース → お菓子 → サボり の泡がコップにわく。');startIll(g1,7);yield wait(1.4);
+  setCaption('歯ブラシ → フッ素 で割り込む。守りはタルーの魔法。');S.finger.x=195;S.finger.y=700;S.finger.visible=true;yield* traceSeq(['brush','fluoride']);yield wait(2);
+  setCaption('歯肉炎のちりょうカルテ：歯ブラシ → フロス → 洗口剤。予防だけで治る病気はタルーが動く。');S.target=g1;yield* traceSeq(['brush','floss','rinse']);yield wait(1.6);
+  setCaption('残りも同じ順番で。');for(var k=0;k<2;k++){var tg=autoTarget();if(tg<0)break;S.target=tg;yield* traceSeq(['brush','floss','rinse']);yield wait(0.7);}
+  S.finger.visible=false;var t2=toothIdx('lo',7);placeDisease(t2,'c1');setCaption('歯に軽い虫歯。放っておいた歯が…');yield wait(1.8);evolve(t2);setCaption('C1 が C2 に。ちりょうカルテが 麻酔 → タービン → CR → 照射器 の4手にのびた。早く見つけるほど、治療は短い。');yield wait(3.4);
+  S.target=t2;S.finger.x=195;S.finger.y=700;S.finger.visible=true;yield* traceSeq(['anes','turbine','cr','light']);setCaption('治療の泡が要る病気はデンタが動く。長いカルテほど点が大きい。');yield wait(2.6);
+  var ck=tileAt(4,7);placeDisease(ck,'stomatitis');S.target=ck;setCaption('口内炎は頬に。歯以外にも病気は置かれる。洗口剤 → 痛み止め。');yield wait(1.2);yield* traceSeq(['rinse','pain']);yield wait(1.8);
+  S.finger.visible=false;setCaption('ここで手に入るもの：治した数と、コンボの点。');SFX.win();S.flash=0.3;S.flashColor='#fff';burst(195,260,40,'#f2b632',2);setChar('denta','cheer');setChar('taru','cheer');yield wait(3);
+}
+function* chHome(){
+  yield* title('第4章','しゅぎょう','親御さんを巻き込む','home','タルーの担当');
+  goScene('home');S.sc.lit=0;S.sc.remain=180;S.sc.checks=[false,false,false,false];S.sc.enamel=3;S.sc.enamelPct=0.7;
+  setCaption('夜の歯磨き3分。パズルの歯の順に磨いて、磨いた歯が光る。');yield wait(2);
+  var zones=['いま：上の右','いま：上の左','いま：下の左','いま：下の右'];
+  for(var i=0;i<20;i++){S.sc.lit=i+1;S.sc.remain=180-9*(i+1);S.sc.zone=zones[Math.floor(i/5)];SFX.tick();yield wait(0.2);}
+  S.sc.remain=0;SFX.chime();setCaption('磨き残しが、そのまま見える。');yield wait(2);
+  setCaption('おうちカルテは、親御さんが採点する4つ。歯磨きをした。姿勢よく座れた。甘いものをひかえた。よく噛んで食べた。');yield wait(1.2);for(var k=0;k<4;k++){S.sc.checks[k]=true;SFX.pop();yield wait(0.45);}yield wait(1.4);
+  setCaption('できた日だけ加点。できなかった日は、何も起きない。');yield wait(2.4);
+  S.sc.enamelPct=1;S.sc.enamel=4;SFX.chime();setCaption('積み上がると「まもり」が上がる。病気が広がりにくく、送られた病気は弱く届く。');yield wait(3.2);
+  setCaption('ここで手に入るもの：まもり。そして、毎晩の親子の会話。');yield wait(3);
+}
+function* chBad(){
+  yield* title('第5章','わるいこと','友達を巻き込む','bad','イルのアジト');
+  goScene('nest');S.sc.d1name='軽い虫歯';S.sc.d1code='C1';S.sc.d1day='1日目';S.sc.d1pct=0.2;S.sc.d1act='育成中';
+  setCaption('イルのアジト。病気カードを置くと育つ。えさをあげると速い。自分の口はきれいなまま。');yield wait(3.4);
+  S.sc.feed={x:300,y:700,t:S.t};SFX.bloop();yield wait(1);S.sc.feed=null;S.sc.d1pct=0.6;SFX.chime();yield wait(1.2);
+  S.sc.d1pct=1;S.sc.d1code='C2';S.sc.d1name='ひどい虫歯';S.sc.d1day='2日目';S.sc.d1act='リサの パズルへ';SFX.evolve();setCaption('育ったら、友達に送る。送る＝相手のパズルで、自分がイルになって90秒あばれる。');yield wait(3.2);
+  goScene('board');resetBoard();S.attack=true;placeDisease(tileAt(8,3),'plaque',true);placeDisease(toothIdx('up',3),'c1',true);
+  fillCup(['juice','sweets','skip','juice','sweets']);
+  setCaption('イルの番。リサのパズルに病気を置き、あくかカルテ（ジュース → お菓子 → サボり）で進める。');
+  S.finger.x=195;S.finger.y=560;S.finger.visible=true;var g=tileAt(8,4);yield fingerTo(toT(g),0.7);down();up();placeDisease(g,'plaque');yield wait(0.8);
+  S.target=tileAt(8,3);startIll(tileAt(8,3),4);yield untilIllDone();yield wait(1.2);S.finger.visible=false;
+  setCaption('置けるのは4つまで。送れるのは承認した友達に、週2回。');yield wait(2.4);
+  goScene('board');resetBoard();placeDisease(tileAt(8,3),'plaque',true);placeDisease(toothIdx('up',3),'c1',true);S.arrive={};
+  setCaption('リサは次にアプリを開くと、自分のパズルに病気が置かれている。まもりが高いと、1段階弱くなって届く。');yield wait(4);
+  S.arrive=null;fillCup(['brush','gargle','fluoride','stopmed','floss']);setCaption('送られた側はいつものパズルで戦う。負けも罰もない。ちょっと困るだけ。');S.target=tileAt(8,3);S.finger.x=195;S.finger.y=700;S.finger.visible=true;yield* traceSeq(['brush','gargle']);yield wait(1.6);S.finger.visible=false;
+  setCaption('ここで手に入るもの：友達の反応。学校での会話。');yield wait(3);
+}
+function* chTeam(){
+  yield* title('第6章','チームバトル','学校を巻き込む','team');
+  goScene('school');S.sc.pct=0.4;S.sc.vsA=0.5;S.sc.vsB=0.5;
+  setCaption('チームは友達のコードで入る。学校、塾、部活、スポーツクラブ。呼び名だけ、正式な名前は書かない。');yield wait(3.4);
+  setCaption('チームの城は、みんなの歯磨きの「率」で育つ。');for(var i=0;i<6;i++){S.sc.pct=0.4+0.04*i;yield wait(0.15);}SFX.chime();yield wait(1.6);
+  setCaption('土曜、イルが襲来。みんなの守りで受け止める。');S.sc.siege=true;S.sc.siegeY=100;for(var j=0;j<10;j++){S.sc.siegeY=100+j*3;yield wait(0.1);}SFX.growl();yield wait(2);
+  setCaption('北小とバトル。各員が攻め1回（相手のパズルでイルの90秒）、守り1回（きょうのパズル）。相手を待たない。');for(var k=0;k<8;k++){S.sc.vsA=0.5+0.03*k;S.sc.vsB=0.5+0.014*k;yield wait(0.15);}yield wait(2.6);
+  setCaption('人数ではなく率で勝負。小さいチームも勝てる。');yield wait(2.4);
+  setCaption('ここで手に入るもの：チームの順位。自分の居場所。');yield wait(3);
+}
+function* chResult(){
+  yield* title('第7章','けっか','親と歯科医に返す','result');
+  goScene('sunday');S.sc.p=0.92;
+  setCaption('日曜。今週のパズル、チームの順位、そして「今日わかったこと」。');yield wait(3.4);
+  setCaption('親御さんには週報。歯科医からの一言もここに届く。');yield wait(3);
+  setCaption('また医院へ。次のカードが待っている。');SFX.win();yield wait(2.4);
+  showEnd('大冒険！デンタルキングダム','紙のカードで遊ぶ、歯のパズル。\n治す・鍛える・いたずらする、の3つの遊びで、\n親と友達と学校を巻き込む。');S.gen=null;S.task=null;
+}
+var CHAPTERS=[['intro','第0章　全体像（なぜこう作ったか）',chIntro],['read','第1章　よみこむ',chRead],['core','第2章　遊びはこれだけ',chCore],['play','第3章　あそぶ（デンタルパズル）',chPlay],['home','第4章　しゅぎょう（親）',chHome],['bad','第5章　わるいこと（友達）',chBad],['team','第6章　チームバトル（学校）',chTeam],['result','第7章　けっか',chResult]];
+function* movie(from){for(var i=from||0;i<CHAPTERS.length;i++){yield* CHAPTERS[i][2]();}}
+function advance(){var r=S.gen.next();if(r.done){S.task=null;S.gen=null;return;}S.task=r.value;}
+
+/* ===================== 進行 ===================== */
+var capEl=null,overlayEl=null,menuEl=null;
+function setCaption(s){if(capEl)capEl.textContent=s;S._cap=s;}
+function startMovie(from){reset('demo');hideOverlay();hideMenu();S.gen=movie(from);advance();}
+function startPlay(){reset('play');hideOverlay();hideMenu();S.scene='board';placeDisease(toothIdx('up',2),'c1',true);S.target=toothIdx('up',2);fillCup(['fluoride','stopmed','brush','anes','floss','turbine','rinse']);setCaption('病気の印をタップ → ちりょうカルテの順に泡をなぞる → 離すと発動。90秒。');S.hint=S.t;}
+function endPlay(){S.over=true;var tr=terr();var win=tr.d>=tr.i;if(win)SFX.win();else SFX.evolve();showEnd(win?'勇者デンタの勝ち！':'大魔王イルの勝ち…','デンタ '+tr.d+'　イル '+tr.i+'\nスコア '+S.score+'（装備 ×'+(1+0.1*S.equip).toFixed(1)+'）\n\n早く見つけるほど、治療は短い。');}
+function showEnd(title,body){if(!overlayEl)return;overlayEl.innerHTML='';var h=document.createElement('h1');h.textContent=title;var p=document.createElement('p');p.textContent=body;var row=document.createElement('div');row.className='row';var b1=document.createElement('button');b1.className='primary';b1.textContent='もう一度見る';b1.onclick=function(){audioInit();startMovie(0);};var b2=document.createElement('button');b2.textContent='章を選ぶ';b2.onclick=function(){showMenu();};var b3=document.createElement('button');b3.textContent='パズルを触ってみる';b3.onclick=function(){audioInit();startPlay();};row.appendChild(b1);row.appendChild(b2);row.appendChild(b3);overlayEl.appendChild(h);overlayEl.appendChild(p);overlayEl.appendChild(row);overlayEl.classList.remove('hidden');}
+function hideOverlay(){if(overlayEl)overlayEl.classList.add('hidden');}
+function showMenu(){if(!menuEl)return;menuEl.innerHTML='';var p=document.createElement('p');p.textContent='章を選ぶ（選んだ章から最後まで再生）';menuEl.appendChild(p);CHAPTERS.forEach(function(ch,i){var b=document.createElement('button');b.textContent=(i+1)+'. '+ch[1];b.onclick=function(){audioInit();startMovie(i);};menuEl.appendChild(b);});var c=document.createElement('button');c.className='primary';c.textContent='とじる';c.onclick=function(){hideMenu();};menuEl.appendChild(c);menuEl.classList.remove('hidden');}
+function hideMenu(){if(menuEl)menuEl.classList.add('hidden');}
+
+/* ===================== 起動 ===================== */
+if(typeof globalThis!=='undefined'&&globalThis.__HEADLESS__){
+  globalThis.__engine={reset:reset,update:update,draw:draw,startMovie:function(from){reset('demo');S.gen=movie(from||0);advance();},startPlay:function(){reset('play');S.scene='board';placeDisease(toothIdx('up',2),'c1',true);S.target=toothIdx('up',2);fillCup(['fluoride','stopmed','brush','anes','floss','turbine','rinse']);},state:function(){return S;},pointerDown:pointerDown,pointerMove:pointerMove,pointerUp:pointerUp,DZ:DZ,TILES:TILES,setCaption:setCaption};
+}
+if(typeof document!=='undefined'){
+  var canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+  capEl=document.getElementById('cap');overlayEl=document.getElementById('overlay');menuEl=document.getElementById('menu');
+  var wrap=document.getElementById('wrap');
+  function fit(){var s=Math.min(window.innerWidth/402,window.innerHeight/860);wrap.style.transform='scale('+s+')';}
+  window.addEventListener('resize',fit);fit();
+  var dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=W*dpr;canvas.height=H*dpr;
+  reset('idle');S.scene='intro';S.sc={title:'大冒険！デンタルキングダム',sub:'なぜ、こう作ったか',hi:'play'};
+  if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){FONT="'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Hiragino Sans',sans-serif";});}
+  document.getElementById('btnStart').addEventListener('click',function(){audioInit();startMovie(0);});
+  document.getElementById('btnMenu0').addEventListener('click',function(){showMenu();});
+  document.getElementById('btnPlay0').addEventListener('click',function(){audioInit();startPlay();});
+  document.getElementById('btnMenu').addEventListener('click',function(){showMenu();});
+  document.getElementById('btnPlay').addEventListener('click',function(){audioInit();startPlay();});
+  var sb=document.getElementById('btnSound');sb.addEventListener('click',function(){soundOn=!soundOn;sb.textContent=soundOn?'音':'消';sb.style.opacity=soundOn?'1':'0.5';});
+  function pos(e){var r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};}
+  canvas.addEventListener('pointerdown',function(e){if(S.mode!=='play')return;e.preventDefault();canvas.setPointerCapture(e.pointerId);var p=pos(e);pointerDown(p.x,p.y);});
+  canvas.addEventListener('pointermove',function(e){if(S.mode!=='play')return;var p=pos(e);pointerMove(p.x,p.y);});
+  canvas.addEventListener('pointerup',function(){if(S.mode!=='play')return;pointerUp();});
+  canvas.addEventListener('pointercancel',function(){if(S.mode!=='play')return;pointerUp();});
+  var last=performance.now();
+  function frame(now){var dt=Math.min(0.05,(now-last)/1000);last=now;update(dt);ctx.setTransform(dpr,0,0,dpr,0,0);draw(ctx);requestAnimationFrame(frame);}
+  requestAnimationFrame(frame);
+}
+})();
+</script>
+</body>
+</html>
