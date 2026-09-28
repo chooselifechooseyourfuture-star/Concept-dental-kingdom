@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>デンタルキングダム みがくモード v6（リズムと音）</title>
+<title>デンタルキングダム みがくモード v7（ロックオン）</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap">
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#2a2420;--fg:#f4ecdf;--muted:#c9b9a3;--btn:#f2b632;--btnfg:#2a2420;--btn2:#5a4b3d;--btn2fg:#f4ecdf;--panel:rgba(20,14,10,0.86)}
@@ -30,9 +30,9 @@ button.primary{background:var(--btn);color:var(--btnfg)}
   <div id="stage">
     <canvas id="game" width="390" height="760"></canvas>
     <div id="overlay">
-      <h1>みがくモード v6</h1>
-      <p>よごれをタップすると、タルーかデンタが道具を手渡してくれる。
-半透明の手のまねをするだけ。90秒。音が出ます。</p>
+      <h1>みがくモード v7</h1>
+      <p>病気を一度タップしたら、あとは画面のどこで動かしてもOK。
+道具はキャラが渡してくれる。90秒。音が出ます。</p>
       <button class="primary" id="btnStart">▶</button>
       <p style="font-size:11px;color:var(--muted)">試作。絵とカルテは仮</p>
     </div>
@@ -66,7 +66,7 @@ function toolPos(id){var who=toolOwner(id),list=who==='taru'?TARU_TOOLS:DENTA_TO
 var STEPS_C2=['anes','turbine','cr','light'];
 /* ---- 状態 ---- */
 var S=null;
-function reset(){S={t:0,timeLeft:90,over:false,started:false,dirt:{},lesions:{},juice:null,tool:null,guide:null,guideT:0,wrongT:-9,wrongTool:null,painT:-9,ptr:{down:false,x:0,y:0,lastX:0,lastY:0,tile:-1},rinse:{active:false,p:0,cool:0,wave:-9},particles:[],popups:[],shake:0,flash:0,flashColor:GOLD,score:0,cleaned:0,combo:0,lastCleanT:-9,ai:{beatAt:3,tele:null,count:0},chars:{taru:{st:'idle',stT:0,x:CHAR.taru.x,y:CHAR.taru.y,bounce:0},denta:{st:'idle',stT:0,x:CHAR.denta.x,y:CHAR.denta.y,bounce:0},iru:{st:'idle',stT:0,scale:1,pour:0}},anes:{},idleT:0,target:-1,events:[],chain:{n:0,lastT:-9,tile:-1,finishT:-9,finishText:'',finishTile:-1},rings:[],spin:{t0:-9,dur:0.5},drops:[],hand:{t0:-9,tile:-1,tool:null,who:null},demo:{tile:-1,tool:null,t0:-9},taps:{}};}
+function reset(){S={t:0,timeLeft:90,over:false,started:false,dirt:{},lesions:{},juice:null,tool:null,guide:null,guideT:0,wrongT:-9,wrongTool:null,painT:-9,ptr:{down:false,x:0,y:0,lastX:0,lastY:0,tile:-1},rinse:{active:false,p:0,cool:0,wave:-9},particles:[],popups:[],shake:0,flash:0,flashColor:GOLD,score:0,cleaned:0,combo:0,lastCleanT:-9,ai:{beatAt:3,tele:null,count:0},chars:{taru:{st:'idle',stT:0,x:CHAR.taru.x,y:CHAR.taru.y,bounce:0},denta:{st:'idle',stT:0,x:CHAR.denta.x,y:CHAR.denta.y,bounce:0},iru:{st:'idle',stT:0,scale:1,pour:0}},anes:{},idleT:0,target:-1,events:[],chain:{n:0,lastT:-9,tile:-1,finishT:-9,finishText:'',finishTile:-1},rings:[],spin:{t0:-9,dur:0.5},drops:[],hand:{t0:-9,tile:-1,tool:null,who:null},demo:{tile:-1,tool:null,t0:-9},taps:{},lock:-1,lockT:-9};}
 function rand(a,b){return a+Math.random()*(b-a);}
 function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
 function clamp(v,a,b){return v<a?a:v>b?b:v;}
@@ -158,7 +158,9 @@ function complete(i,who,tool){var L=S.lesions[i];delete S.lesions[i];delete S.di
   else if(m>=2){SFX.finish(m);ring(t.x,t.y,10,50,0.45,GOLD);S.flash=0.18;S.flashColor=who==='taru'?PINK:BLUE;vibrate([20,30,40]);setChar(who,'cheer');S.chars.iru.scale=0.7;setChar('iru','wince');for(var k2=0;k2<m;k2++){S.particles.push({x:METER[k2],y:21,vx:rand(-20,20),vy:rand(-120,-70),life:0.6,age:0,color:GOLD,size:6,g:200});}}
   else{SFX.clean(1);S.flash=0.12;S.flashColor=who==='taru'?PINK:BLUE;vibrate([20,30,40]);setChar(who,'cheer');S.chars.iru.scale=0.75;setChar('iru','wince');}
   S.chain.n=0;S.chain.lastT=-9;
-  if(S.guide&&S.guide.tile===i)S.guide=null;if(S.target===i)S.target=-1;if(S.hand.tile===i)S.hand.tile=-1;}
+  if(S.guide&&S.guide.tile===i)S.guide=null;if(S.target===i)S.target=-1;if(S.hand.tile===i)S.hand.tile=-1;
+  if(S.lock===i){S.lock=-1;var nx=nextProblemNear(i);if(nx>=0)later(0.35,function(){if(problemTool(nx))setLock(nx);});}}
+function nextProblemNear(i){var t=TILES[i];var best=-1,bd=1e9;for(var k=0;k<TILES.length;k++){if(k===i)continue;var pt=problemTool(k);if(!pt||pt==='brush')continue;var d=dist(t.x,t.y,TILES[k].x,TILES[k].y);if(d<bd){bd=d;best=k;}}return best;}
 /* ---- 手順コンボ ---- */
 var METER=[306,324,342,360];
 function chainStep(i,tool){var c=S.chain;c.n=Math.min(4,c.n+1);c.lastT=S.t;c.tile=i;var t=TILES[i];var n=c.n;S.score+=20*n;SFX.step(n);popup(t.x-22,t.y-40,NAMES[tool||S.tool]||'',10,'#fff',1.1,'#3a2a1a');if(n>=2)popup(t.x+26,t.y-42,'×'+n,14,'#fff',1.0,'#b0306a');
@@ -193,6 +195,7 @@ function update(dt){
     if(!S.ptr.down)drillOff();
     if(!S.ptr.down){S.idleT+=dt;if(S.idleT>4){S.idleT=0;var pt=primaryTarget();if(pt>=0){var tl=problemTool(pt);S.demo={tile:pt,tool:tl,t0:S.t};S.target=pt;var who=toolOwner(tl);S.chars[who].bounce=1;SFX.nudge();}}}else S.idleT=0;
     if(S.demo.tile>=0&&(S.t-S.demo.t0>8||!problemTool(S.demo.tile)))S.demo.tile=-1;
+    if(S.lock>=0&&!problemTool(S.lock))S.lock=-1;
     if(S.target>=0&&!S.lesions[S.target]&&!(S.dirt[S.target]>0.05)&&!(S.juice&&S.juice.tiles.indexOf(S.target)>=0))S.target=-1;
   }
   ['taru','denta'].forEach(function(n){var ch=S.chars[n];if((ch.st==='wince'||ch.st==='cheer'||ch.st==='ready'||ch.st==='shake')&&S.t-ch.stT>1.1){ch.st='idle';ch.stT=S.t;}ch.bounce=Math.max(0,ch.bounce-dt*1.5);});
@@ -209,17 +212,25 @@ function tileHit(x,y){var best=-1,bd=1e9;for(var i=0;i<TILES.length;i++){var t=T
 function toolHit(x,y){var all=TARU_TOOLS.concat(DENTA_TOOLS);for(var i=0;i<all.length;i++){var p=toolPos(all[i]);if(dist(x,y,p.x,p.y)<26)return all[i];}return null;}
 function charHit(x,y){if(dist(x,y,S.chars.taru.x,S.chars.taru.y)<34)return 'taru';if(dist(x,y,S.chars.denta.x,S.chars.denta.y)<34)return 'denta';return null;}
 function adjY(y){return y-12;}
+function isTapTool(t){return t==='anes'||t==='fluoride'||t==='cr'||t==='light'||t==='gargle';}
+function setLock(i){if(S.lock!==i){S.lock=i;S.lockT=S.t;}guideTo(i);}
 function pointerDown(x,y){y=adjY(y);S.ptr.down=true;S.ptr.x=x;S.ptr.y=y;S.ptr.lastX=x;S.ptr.lastY=y;S.idleT=0;S.acc=0;
   if(dist(x,y+12,348,23)<16){soundOn=!soundOn;return;}if(dist(x,y+12,374,23)<16){audioInit();start();return;}
   if(S.over||!S.started)return;
   var tl=toolHit(x,y);if(tl){S.tool=tl;SFX.tap();S.ptr.tile=-1;setChar(toolOwner(tl),'ready');return;}
-  var ch=charHit(x,y);if(ch){var pt=primaryTarget();if(pt>=0)guideTo(pt);S.chars[ch].bounce=1;S.ptr.tile=-1;return;}
-  var ti=tileHit(x,y);S.ptr.tile=ti;if(ti<0)return;
-  var need=problemTool(ti);if(!need){if(S.tool==='gargle'&&S.rinse.cool<=S.t)doRinse();return;}
-  if(S.tool!==need){guideTo(ti);return;}
-  S.target=ti;S.demo.tile=-1;applyTap(ti);
+  var ch=charHit(x,y);if(ch){var pt=primaryTarget();if(pt>=0)setLock(pt);S.chars[ch].bounce=1;S.ptr.tile=-1;return;}
+  var onBoard=x>OX-10&&x<OX+COLS*TS+10&&y>OY-10&&y<OY+ROWS*TS+10;
+  var ti=tileHit(x,y);S.ptr.tile=ti;
+  // 病変を触ったらロック（汚れの帯は場所で磨く）
+  if(ti>=0&&(S.lesions[ti]||(S.juice&&S.juice.tiles.indexOf(ti)>=0))){setLock(ti);if(S.tool===problemTool(ti)&&isTapTool(S.tool)){S.demo.tile=-1;applyTap(ti);}return;}
+  if(ti>=0&&S.dirt[ti]>0.05){if(S.tool!=='brush'){guideTo(ti);}S.target=ti;return;}
+  // 空きタイル／盤の外：ロック中なら、そこで動かした操作がロック先に効く
+  if(S.lock>=0&&problemTool(S.lock)){var need=problemTool(S.lock);if(S.tool!==need){guideTo(S.lock);return;}if(isTapTool(S.tool)){S.demo.tile=-1;applyTap(S.lock);}return;}
+  if(S.tool==='gargle'&&S.rinse.cool<=S.t&&onBoard)doRinse();
 }
-function pointerMove(x,y){y=adjY(y);if(!S.ptr.down)return;var dx=x-S.ptr.lastX,dy=y-S.ptr.lastY;S.ptr.lastX=x;S.ptr.lastY=y;S.ptr.x=x;S.ptr.y=y;if(S.over||!S.started)return;var ti=tileHit(x,y);if(ti!==S.ptr.tile){S.ptr.tile=ti;if(S.tool==='turbine')drillOff();}if(S.tool==='brush'||S.tool==='floss'||S.tool==='turbine'){applyDrag(ti,dx,dy,x,y);if(ti>=0&&problemTool(ti)===S.tool)S.demo.tile=-1;}}
+function pointerMove(x,y){y=adjY(y);if(!S.ptr.down)return;var dx=x-S.ptr.lastX,dy=y-S.ptr.lastY;S.ptr.lastX=x;S.ptr.lastY=y;S.ptr.x=x;S.ptr.y=y;if(S.over||!S.started)return;var ti=tileHit(x,y);if(ti!==S.ptr.tile){S.ptr.tile=ti;}
+  if(S.tool==='brush'){applyDrag(ti,dx,dy,x,y);}
+  else if(S.tool==='floss'||S.tool==='turbine'){var tgt=S.lock>=0&&S.lesions[S.lock]?S.lock:ti;applyDrag(tgt,dx,dy,x,y);if(tgt>=0&&problemTool(tgt)===S.tool)S.demo.tile=-1;}}
 function pointerUp(){S.ptr.down=false;S.ptr.tile=-1;drillOff();}
 function endGame(){S.over=true;drillOff();SFX.win();showEnd(String(S.score),'きれいにした '+S.cleaned);}
 /* ---- 描画 ---- */
@@ -312,6 +323,8 @@ function draw(ctx){ctx.save();if(S.shake>0)ctx.translate(rand(-1,1)*S.shake*14,r
   drawBoard(ctx);
   S.rings.forEach(function(rg){var f=clamp((S.t-rg.t0)/rg.dur,0,1);ctx.beginPath();ctx.arc(rg.x,rg.y,rg.r0+(rg.r1-rg.r0)*f,0,6.29);ctx.strokeStyle=rg.color;ctx.globalAlpha=1-f;ctx.lineWidth=5*(1-f)+1;ctx.stroke();ctx.globalAlpha=1;});
   if(S.ai.tele){var tl2=S.ai.tele;var bl=0.5+0.5*Math.sin(S.t*14);tl2.tiles.forEach(function(i){var t=TILES[i];ctx.strokeStyle=tl2.kind==='juice'?'rgba(255,140,60,'+bl+')':'rgba(123,63,191,'+bl+')';ctx.lineWidth=3;ctx.setLineDash([4,4]);rr(ctx,t.x-20,t.y-20,40,40,7);ctx.stroke();ctx.setLineDash([]);});}
+  if(S.lock>=0){var lt=TILES[S.lock];var le=S.t-S.lockT;var lr=le<0.25?34-le/0.25*8:26;ctx.save();ctx.translate(lt.x,lt.y);ctx.rotate(S.t*0.8);ctx.strokeStyle=GOLD;ctx.lineWidth=3;for(var q=0;q<4;q++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.moveTo(lr,lr-10);ctx.lineTo(lr,lr);ctx.lineTo(lr-10,lr);ctx.stroke();}ctx.restore();
+    if(S.ptr.down&&S.ptr.tile!==S.lock&&S.tool&&S.tool!=='brush'){ctx.strokeStyle='rgba(242,182,50,0.6)';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(S.ptr.x,S.ptr.y-14);ctx.lineTo(lt.x,lt.y);ctx.stroke();ctx.setLineDash([]);}}
   drawChainRings(ctx);drawDemo(ctx);drawFinish(ctx);
   var dch=S.chars.denta,tch=S.chars.taru;dch.x=CHAR.denta.x;dch.y=CHAR.denta.y;
   drawTrays(ctx);
@@ -321,7 +334,7 @@ function draw(ctx){ctx.save();if(S.shake>0)ctx.translate(rand(-1,1)*S.shake*14,r
   // 痛み
   if(S.t-S.painT<0.9){ctx.fillStyle=GOLD;ctx.strokeStyle='#d63b3b';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(dch.x+30,dch.y-40);ctx.lineTo(dch.x+38,dch.y-54);ctx.lineTo(dch.x+34,dch.y-54);ctx.lineTo(dch.x+40,dch.y-66);ctx.lineTo(dch.x+28,dch.y-50);ctx.lineTo(dch.x+32,dch.y-50);ctx.lineTo(dch.x+26,dch.y-38);ctx.closePath();ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(dch.x-34,dch.y-48,12,0,6.29);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#d63b3b';ctx.lineWidth=3;ctx.stroke();ctx.beginPath();ctx.moveTo(dch.x-34,dch.y-56);ctx.lineTo(dch.x-34,dch.y-46);ctx.moveTo(dch.x-34,dch.y-41);ctx.lineTo(dch.x-34,dch.y-40);ctx.strokeStyle='#d63b3b';ctx.lineWidth=4;ctx.lineCap='round';ctx.stroke();}
   // 指の道具
-  if(S.ptr.down&&S.tool&&S.ptr.y<OY+ROWS*TS+10){ctx.save();ctx.translate(S.ptr.x,S.ptr.y-28);ctx.beginPath();ctx.arc(0,0,18,0,6.29);ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();ctx.strokeStyle=GOLD;ctx.lineWidth=3;ctx.stroke();drawIcon(ctx,TOOLICON[S.tool],0,0,22,'#2a2a3a');ctx.restore();}
+  if(S.ptr.down&&S.tool&&S.ptr.y<OY+ROWS*TS+60){ctx.save();ctx.translate(S.ptr.x,S.ptr.y-28);ctx.beginPath();ctx.arc(0,0,18,0,6.29);ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();ctx.strokeStyle=GOLD;ctx.lineWidth=3;ctx.stroke();drawIcon(ctx,TOOLICON[S.tool],0,0,22,'#2a2a3a');ctx.restore();}
   S.particles.forEach(function(p){ctx.globalAlpha=1-p.age/p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,6.29);ctx.fill();});ctx.globalAlpha=1;
   S.popups.forEach(function(q){var f=q.age/q.life;ctx.globalAlpha=f<0.75?1:1-(f-0.75)/0.25;var sc=f<0.15?0.6+f/0.15*0.5:1.1-Math.min(0.1,f*0.1);ctx.save();ctx.translate(q.x,q.y-f*26);ctx.scale(sc,sc);if(q.bg){ctx.fillStyle=q.bg;rr(ctx,-q.size*1.6,-q.size*0.8,q.size*3.2,q.size*1.6,q.size*0.8);ctx.fill();txt(ctx,q.text,0,0,q.size,q.color);}else txt(ctx,q.text,0,0,q.size,q.color,'center',800,'rgba(255,255,255,0.9)');ctx.restore();});ctx.globalAlpha=1;
   drawHUD(ctx);ctx.restore();
