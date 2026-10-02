@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>デンタルキングダム みがくモード v17</title>
+<title>デンタルキングダム みがくモード v18</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap">
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#2a2420;--fg:#f4ecdf;--muted:#c9b9a3;--btn:#f2b632;--btnfg:#2a2420;--btn2:#5a4b3d;--btn2fg:#f4ecdf;--panel:rgba(20,14,10,0.86)}
@@ -34,7 +34,7 @@ button.primary{background:var(--btn);color:var(--btnfg)}
   <div id="stage">
     <canvas id="game" width="390" height="760"></canvas>
     <div id="overlay">
-      <h1>みがくモード v17</h1>
+      <h1>みがくモード v18</h1>
       <p>① よごれた歯を タップ
 ② キャラが 道具を くれる
 ③ 半とうめいの 手の まねを する
@@ -46,6 +46,373 @@ button.primary{background:var(--btn);color:var(--btnfg)}
     
   </div>
 </div>
+<script id="dk-trial">
+/*
+ * dk-trial-kiroku.js — 試遊の記録（端末の中だけ）。デンタルキングダムのパズル版と同じ数え方・同じ見せ方。
+ * 2026-10-02。パズル版（App-dental-kingdom の src/logic/save.ts・src/ui/KirokuOverlay.tsx）を、
+ * 1つの HTML に貼れる素の JavaScript に書き直したもの。外には何も送らない。名前・年齢などは残さない。
+ *
+ * 使い方（くわしくは引き継ぎの文書）：
+ *   DKTrial.init({ storageKey: 'dental-kingdom.brush-trial', courses: { easy: 'にゅうもん', normal: 'ふつう', hard: 'さいきょう' } })
+ *   遊び始めたとき        DKTrial.roundStart('normal')
+ *   「もういちど」を押したとき DKTrial.again()            （roundStart より先に呼ぶ）
+ *   終わったとき          DKTrial.result('normal', score, stars)
+ *   長押しで きろく        DKTrial.attachLongPress(element)
+ *   ?kiroku=1 で開くと きろく を出す。?reset=1 で開くと（確かめてから）記録を消す。
+ */
+(function (global) {
+  'use strict';
+
+  var opts = {
+    storageKey: 'dental-kingdom.brush-trial',
+    weeks: 5, // カレンダーの週の数（今日の週まで）
+    days: 14, // 日ごとの記録に並べる日の数
+    reopenAfterMin: 30, // 画面を離れて、これだけたってから戻ったら「開いた」に数える（分）
+    longPressSec: 2, // 長押しで きろく（秒）
+    courses: {}, // コースの名前（キー → 画面に出す名前）
+    againLabel: 'もういちど', // 「もう一回」のボタンの名前（画面の言葉に合わせる）
+    backLabel: 'ゲームへ',
+    // いちばん良かった結果の書き方（rating：星の数など、score：点）
+    formatBest: function (rating, score) {
+      var stars = '';
+      for (var i = 0; i < 3; i++) stars += i < rating ? '★' : '☆';
+      return score === null ? stars : stars + '（' + score + 'てん）';
+    }
+  };
+
+  var TEXT = {
+    title: 'きろく',
+    note: ['この スマホ・タブレットの なかだけに のこります', 'そとには おくりません'],
+    days: function (open, play) { return 'ひらいた ひ ' + open + 'にち・あそんだ ひ ' + play + 'にち'; },
+    rounds: function (n) { return 'あそんだ かいすう ' + n + 'かい'; },
+    again: function (n) { return '「' + opts.againLabel + '」 ' + n + 'かい'; },
+    best: function (r, s) { return 'いちばん よかった ' + opts.formatBest(r, s); },
+    course: function (name, n, r) { return r === null ? name + ' ' + n + 'かい' : name + ' ' + n + 'かい（いちばん ' + opts.formatBest(r, null) + '）'; },
+    firstDay: function (m, d) { return 'はじめて ひらいた ひ ' + m + '/' + d; },
+    weekdays: ['日', '月', '火', '水', '木', '金', '土'],
+    calRounds: function (n) { return n + 'かい'; },
+    calOpened: 'ひらいた',
+    listTitle: 'ひごとの きろく',
+    listRow: function (o, r, a) { return 'ひらいた ' + o + '・あそんだ ' + r + 'かい・' + opts.againLabel + ' ' + a + 'かい'; },
+    none: 'まだ きろくが ありません',
+    resetConfirm: 'この端末の きろく（開いた日・遊んだ回数 など）を消します。よろしいですか？'
+  };
+
+  // ───────── 記録の計算（純粋関数。テストできるように _logic で出す） ─────────
+
+  var DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  function emptySave() {
+    return { version: 1, firstDay: null, days: {}, bestScore: null, bestRating: null, courses: {} };
+  }
+
+  /** 端末の時計の日付（その土地の日付）を YYYY-MM-DD に */
+  function dayKey(d) {
+    var m = String(d.getMonth() + 1), day = String(d.getDate());
+    return d.getFullYear() + '-' + (m.length < 2 ? '0' + m : m) + '-' + (day.length < 2 ? '0' + day : day);
+  }
+
+  function count(v) { return typeof v === 'number' && isFinite(v) && v >= 0 ? Math.floor(v) : 0; }
+  function maybe(v) { return typeof v === 'number' && isFinite(v) && v >= 0 ? Math.floor(v) : null; }
+  function obj(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : null; }
+
+  /** 保存してある文字から読み直す。壊れている所は捨てる（読めなくても遊べるように） */
+  function parseSave(raw) {
+    if (!raw) return emptySave();
+    var o;
+    try { o = obj(JSON.parse(raw)); } catch (e) { return emptySave(); }
+    if (!o) return emptySave();
+    var s = emptySave();
+    var days = obj(o.days) || {};
+    Object.keys(days).forEach(function (k) {
+      var r = obj(days[k]);
+      if (DAY_RE.test(k) && r) s.days[k] = { opens: count(r.opens), rounds: count(r.rounds), again: count(r.again) };
+    });
+    var courses = obj(o.courses) || {};
+    Object.keys(courses).forEach(function (k) {
+      var c = obj(courses[k]);
+      if (c) s.courses[k] = { rounds: count(c.rounds), bestRating: maybe(c.bestRating) };
+    });
+    s.firstDay = typeof o.firstDay === 'string' && DAY_RE.test(o.firstDay) ? o.firstDay : null;
+    s.bestScore = maybe(o.bestScore);
+    s.bestRating = maybe(o.bestRating);
+    return s;
+  }
+
+  function copy(s) { return parseSave(JSON.stringify(s)); }
+
+  function withDay(s, day, change) {
+    var n = copy(s);
+    var d = n.days[day] || { opens: 0, rounds: 0, again: 0 };
+    n.days[day] = change(d);
+    if (!n.firstDay) n.firstDay = day;
+    return n;
+  }
+
+  function recordOpen(s, day) { return withDay(s, day, function (d) { d.opens++; return d; }); }
+  function recordAgain(s, day) { return withDay(s, day, function (d) { d.again++; return d; }); }
+
+  function recordRoundStart(s, day, course) {
+    var n = withDay(s, day, function (d) { d.rounds++; return d; });
+    var key = String(course || 'default');
+    var c = n.courses[key] || { rounds: 0, bestRating: null };
+    n.courses[key] = { rounds: c.rounds + 1, bestRating: c.bestRating };
+    return n;
+  }
+
+  function better(a, b) { return a === null ? b : b === null ? a : Math.max(a, b); }
+
+  function recordResult(s, course, score, rating) {
+    var n = copy(s);
+    var key = String(course || 'default');
+    var c = n.courses[key] || { rounds: 0, bestRating: null };
+    n.courses[key] = { rounds: c.rounds, bestRating: better(c.bestRating, maybe(rating)) };
+    n.bestScore = better(n.bestScore, maybe(score));
+    n.bestRating = better(n.bestRating, maybe(rating));
+    return n;
+  }
+
+  /** 画面を離れてから戻ったとき「開いた」に数えるか：日付が変わっていれば数える。同じ日なら minMs 以上 離れていたら */
+  function countsAsReopen(hiddenAtMs, nowMs, sameDay, minMs) { return !sameDay || nowMs - hiddenAtMs >= minMs; }
+
+  function totals(s) {
+    var t = { openDays: 0, playDays: 0, opens: 0, rounds: 0, again: 0 };
+    Object.keys(s.days).forEach(function (k) {
+      var d = s.days[k];
+      if (d.opens > 0 || d.rounds > 0) t.openDays++;
+      if (d.rounds > 0) t.playDays++;
+      t.opens += d.opens; t.rounds += d.rounds; t.again += d.again;
+    });
+    return t;
+  }
+
+  /** 記録のある日（新しい日から） */
+  function recordedDays(s, max) {
+    return Object.keys(s.days)
+      .filter(function (k) { return s.days[k].opens > 0 || s.days[k].rounds > 0; })
+      .sort().reverse().slice(0, max)
+      .map(function (k) { return { day: k, record: s.days[k] }; });
+  }
+
+  /** カレンダー：今日の週を最後に、weeks 週ぶん（日曜はじまり） */
+  function calendarWeeks(today, weeks) {
+    var start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() - (weeks - 1) * 7);
+    var out = [];
+    for (var w = 0; w < weeks; w++) {
+      var row = [];
+      for (var i = 0; i < 7; i++) row.push(dayKey(new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + i)));
+      out.push(row);
+    }
+    return out;
+  }
+
+  function dayParts(day) {
+    var p = day.split('-').map(Number);
+    return { month: p[1], date: p[2], weekday: new Date(p[0], p[1] - 1, p[2]).getDay() };
+  }
+
+  // ───────── 読み書き（localStorage。保存できなくても遊べる） ─────────
+
+  var save = emptySave();
+  function load() { try { return parseSave(global.localStorage.getItem(opts.storageKey)); } catch (e) { return emptySave(); } }
+  function store() { try { global.localStorage.setItem(opts.storageKey, JSON.stringify(save)); } catch (e) { /* 遊べる */ } }
+  function commit(next) { save = next; store(); }
+  function today() { return dayKey(new Date()); }
+
+  // ───────── きろく の画面 ─────────
+
+  var overlay = null;
+  var CSS =
+    '#dk-kiroku{position:fixed;inset:0;z-index:2147483000;overflow-y:auto;background:rgba(20,14,10,.96);color:#f4ecdf;' +
+    'font-family:inherit;-webkit-text-size-adjust:100%}' +
+    '#dk-kiroku .dk-in{max-width:360px;margin:0 auto;padding:16px 14px 28px;display:flex;flex-direction:column;align-items:center;gap:10px}' +
+    '#dk-kiroku h1{margin:6px 0 0;font-size:26px;color:#ffe9b0}' +
+    '#dk-kiroku .dk-back{align-self:flex-start;font:inherit;font-weight:800;font-size:14px;padding:6px 14px;border-radius:999px;' +
+    'border:2px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#f4ecdf;cursor:pointer}' +
+    '#dk-kiroku ul.dk-sum{margin:0;padding:10px 14px;list-style:none;width:100%;box-sizing:border-box;font-size:15px;font-weight:800;' +
+    'line-height:1.6;background:rgba(255,255,255,.08);border-radius:14px}' +
+    '#dk-kiroku ul.dk-sum .sub{font-size:12px;font-weight:400;opacity:.85}' +
+    '#dk-kiroku table{width:100%;border-collapse:separate;border-spacing:3px;table-layout:fixed}' +
+    '#dk-kiroku th{font-size:11px;font-weight:400;opacity:.75}' +
+    '#dk-kiroku th:first-child{color:#ff9a9a}#dk-kiroku th:last-child{color:#9ac4ff}' +
+    '#dk-kiroku td{height:38px;padding:2px 0;vertical-align:top;text-align:center;border-radius:8px;background:rgba(255,255,255,.06)}' +
+    '#dk-kiroku td.future{opacity:.35}#dk-kiroku td.opened{background:rgba(242,182,50,.25)}' +
+    '#dk-kiroku td.played{background:rgba(242,182,50,.85);color:#2a2420}#dk-kiroku td.today{outline:2px solid #fff;outline-offset:-2px}' +
+    '#dk-kiroku .d{display:block;font-size:10px;line-height:1.2}#dk-kiroku .c{display:block;font-size:12px;font-weight:800;line-height:1.4}' +
+    '#dk-kiroku .o{display:block;font-size:9px;line-height:1.6}' +
+    '#dk-kiroku .dk-list{width:100%;text-align:left;font-size:12px}#dk-kiroku .dk-list p{margin:0 0 4px;font-size:12px;opacity:.85}' +
+    '#dk-kiroku .dk-list ul{margin:0;padding:0;list-style:none;line-height:1.8}' +
+    '#dk-kiroku .dk-list li{display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,.1)}#dk-kiroku .dk-list b{flex:none;width:70px}' +
+    '#dk-kiroku .dk-note{margin:4px 0 0;font-size:11px;opacity:.75;text-align:center}#dk-kiroku .dk-note span{display:block}';
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function courseName(key) { return Object.prototype.hasOwnProperty.call(opts.courses, key) ? opts.courses[key] : key; }
+
+  function build() {
+    var root = el('div');
+    root.id = 'dk-kiroku';
+    root.setAttribute('role', 'dialog');
+    var box = el('div', 'dk-in');
+    root.appendChild(box);
+    var back = el('button', 'dk-back', opts.backLabel);
+    back.type = 'button';
+    back.onclick = hide;
+    box.appendChild(back);
+    box.appendChild(el('h1', '', TEXT.title));
+
+    var t = totals(save);
+    var sum = el('ul', 'dk-sum');
+    sum.appendChild(el('li', '', TEXT.days(t.openDays, t.playDays)));
+    sum.appendChild(el('li', '', TEXT.rounds(t.rounds)));
+    sum.appendChild(el('li', '', TEXT.again(t.again)));
+    if (save.bestRating !== null || save.bestScore !== null) sum.appendChild(el('li', '', TEXT.best(save.bestRating || 0, save.bestScore)));
+    var keys = Object.keys(opts.courses);
+    Object.keys(save.courses).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+    keys.forEach(function (k) {
+      var c = save.courses[k] || { rounds: 0, bestRating: null };
+      sum.appendChild(el('li', 'sub', TEXT.course(courseName(k), c.rounds, c.bestRating)));
+    });
+    if (save.firstDay) {
+      var f = dayParts(save.firstDay);
+      sum.appendChild(el('li', 'sub', TEXT.firstDay(f.month, f.date)));
+    }
+    box.appendChild(sum);
+
+    var now = new Date(), todayKey = dayKey(now);
+    var table = el('table'), head = el('tr');
+    TEXT.weekdays.forEach(function (w) { head.appendChild(el('th', '', w)); });
+    var thead = el('thead'); thead.appendChild(head); table.appendChild(thead);
+    var tbody = el('tbody');
+    calendarWeeks(now, opts.weeks).forEach(function (week, wi) {
+      var tr = el('tr');
+      week.forEach(function (day, di) {
+        var p = dayParts(day), rec = save.days[day] || { opens: 0, rounds: 0 };
+        var cls = [rec.rounds > 0 ? 'played' : rec.opens > 0 ? 'opened' : '', day === todayKey ? 'today' : '', day > todayKey ? 'future' : '']
+          .filter(Boolean).join(' ');
+        var td = el('td', cls);
+        td.appendChild(el('span', 'd', p.date === 1 || (wi === 0 && di === 0) ? p.month + '/' + p.date : String(p.date)));
+        if (rec.rounds > 0) td.appendChild(el('span', 'c', TEXT.calRounds(rec.rounds)));
+        else if (rec.opens > 0) td.appendChild(el('span', 'o', TEXT.calOpened));
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    box.appendChild(table);
+
+    var list = el('div', 'dk-list');
+    list.appendChild(el('p', '', TEXT.listTitle));
+    var rows = recordedDays(save, opts.days);
+    if (rows.length === 0) list.appendChild(el('p', '', TEXT.none));
+    else {
+      var ul = el('ul');
+      rows.forEach(function (x) {
+        var p = dayParts(x.day), li = el('li');
+        li.appendChild(el('b', '', p.month + '/' + p.date + '（' + TEXT.weekdays[p.weekday] + '）'));
+        li.appendChild(el('span', '', TEXT.listRow(x.record.opens, x.record.rounds, x.record.again)));
+        ul.appendChild(li);
+      });
+      list.appendChild(ul);
+    }
+    box.appendChild(list);
+    var note = el('p', 'dk-note');
+    TEXT.note.forEach(function (line) { note.appendChild(el('span', '', line)); });
+    box.appendChild(note);
+    return root;
+  }
+
+  function show() {
+    if (!document.getElementById('dk-kiroku-style')) {
+      var st = el('style', '', CSS);
+      st.id = 'dk-kiroku-style';
+      document.head.appendChild(st);
+    }
+    hide();
+    overlay = build();
+    document.body.appendChild(overlay);
+  }
+
+  /** きろくを閉じる。アドレスから ?kiroku を外す（読み込み直さないので「開いた」は増えない） */
+  function hide() {
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    overlay = null;
+    dropParam('kiroku');
+  }
+
+  function dropParam(name) {
+    try {
+      var url = new URL(global.location.href);
+      if (!url.searchParams.has(name)) return;
+      url.searchParams.delete(name);
+      global.history.replaceState(null, '', url.toString());
+    } catch (e) { /* 古いブラウザ：そのまま */ }
+  }
+
+  function param(name) {
+    try { return new URL(global.location.href).searchParams.get(name); } catch (e) { return null; }
+  }
+
+  // ───────── 外から呼ぶもの ─────────
+
+  var started = false;
+
+  function init(o) {
+    if (started) return;
+    started = true;
+    Object.keys(o || {}).forEach(function (k) { opts[k] = o[k]; });
+    save = load();
+    if (param('reset') === '1') {
+      if (global.confirm(TEXT.resetConfirm)) { save = emptySave(); store(); }
+      dropParam('reset');
+    }
+    var viewOnly = param('kiroku') === '1';
+    if (viewOnly) show();
+    else commit(recordOpen(save, today()));
+    // しばらく画面を離れてから戻ったら、もう一度「開いた」に数える（きろく を見ている間は数えない）
+    var hiddenAt = null, hiddenDay = '';
+    document.addEventListener('visibilitychange', function () {
+      var now = new Date();
+      if (document.visibilityState === 'hidden') { hiddenAt = now.getTime(); hiddenDay = dayKey(now); return; }
+      if (hiddenAt === null) return;
+      var reopen = countsAsReopen(hiddenAt, now.getTime(), hiddenDay === dayKey(now), opts.reopenAfterMin * 60000);
+      hiddenAt = null;
+      if (reopen && !overlay) commit(recordOpen(save, dayKey(now)));
+    });
+  }
+
+  function attachLongPress(target) {
+    if (!target) return;
+    var timer = null;
+    function cancel() { if (timer !== null) clearTimeout(timer); timer = null; }
+    target.addEventListener('pointerdown', function () { cancel(); timer = setTimeout(show, opts.longPressSec * 1000); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (n) { target.addEventListener(n, cancel); });
+    target.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  global.DKTrial = {
+    init: init,
+    roundStart: function (course) { commit(recordRoundStart(save, today(), course)); },
+    again: function () { commit(recordAgain(save, today())); },
+    result: function (course, score, rating) { commit(recordResult(save, course, score, rating)); },
+    attachLongPress: attachLongPress,
+    show: show,
+    hide: hide,
+    data: function () { return copy(save); },
+    _logic: {
+      emptySave: emptySave, dayKey: dayKey, parseSave: parseSave, recordOpen: recordOpen, recordAgain: recordAgain,
+      recordRoundStart: recordRoundStart, recordResult: recordResult, countsAsReopen: countsAsReopen, totals: totals,
+      recordedDays: recordedDays, calendarWeeks: calendarWeeks, dayParts: dayParts
+    }
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
 <script>
 (function(){
 'use strict';
@@ -268,7 +635,7 @@ function pointerMove(x,y){y=adjY(y);if(!S.ptr.down)return;var dx=x-S.ptr.lastX,d
 function pointerUp(){S.ptr.down=false;S.ptr.tile=-1;drillOff();}
 function starCount(){var th=DIFF.stars||[1200,3500,6500];var n=0;for(var i=0;i<3;i++){if(S.score>=th[i])n=i+1;}return Math.max(0,n-S.lost);}
 function tipText(){var c2=0;for(var k in S.lesions){if(S.lesions[k].type==='c2')c2++;}if(S.lost>0)return 'ぬけた歯は もどらない。くろい あなは はやく なおそう';if(S.uses.anes<=0||S.uses.cr<=0||S.uses.fluoride<=0)return 'ちりょうの どうぐは 3回だけ。よごれは ほうっておくと むしばに';if(c2>0)return 'くろい あなは デンタに まかせよう';if(S.stats.rinse===0)return 'うがいで まとめて ながそう';if(S.stats.wrongDir>=2)return 'フロスは うえ・した に うごかそう';if(S.stats.maxMult<2)return 'つづけて なおすと ×2 になるよ';if(DIFF!==DIFFS.hard)return 'つぎは '+(DIFF===DIFFS.easy?'ふつう':'さいきょう')+' に ちょうせん';return 'かんぺき！ もういちど';}
-function endGame(){if(specialReady())startSpecial(false);S.over=true;drillOff();SFX.win();var n=starCount();var stars='';for(var i=0;i<3;i++)stars+=i<n?'⭐':'☆';showEnd(stars,'きれいにした '+S.cleaned+'　クリーニング '+S.specials+'回'+(S.lost?'　ぬけた歯 '+S.lost:'')+'\n'+(n>=3?'さいこう！':n===2?'すごい！':n===1?'いいね！':'つぎは もっと')+'\n\n'+tipText());}
+function endGame(){if(specialReady())startSpecial(false);S.over=true;drillOff();SFX.win();var n=starCount();if(trial())trial().result(diffKey(),S.score,n);var stars='';for(var i=0;i<3;i++)stars+=i<n?'⭐':'☆';showEnd(stars,'きれいにした '+S.cleaned+'　クリーニング '+S.specials+'回'+(S.lost?'　ぬけた歯 '+S.lost:'')+'\n'+(n>=3?'さいこう！':n===2?'すごい！':n===1?'いいね！':'つぎは もっと')+'\n\n'+tipText());}
 /* ---- 描画 ---- */
 function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
 function txt(ctx,s,x,y,size,color,align,weight,outline){ctx.font=(weight||800)+' '+size+'px '+FONT;ctx.textAlign=align||'center';ctx.textBaseline='middle';if(outline){ctx.lineWidth=4;ctx.strokeStyle=outline;ctx.lineJoin='round';ctx.strokeText(s,x,y);}ctx.fillStyle=color;ctx.fillText(s,x,y);}
@@ -395,8 +762,10 @@ function draw(ctx){ctx.save();if(S.shake>0)ctx.translate(rand(-1,1)*S.shake*14,r
 /* ---- 進行 ---- */
 var overlayEl=null;
 function seed(){S.uses={anes:DIFF.uses,cr:DIFF.uses,fluoride:DIFF.uses};var a=ARCH.up,b=ARCH.lo;DIFF.initial.up.forEach(function(i){addDirt(a[i],rand(0.75,0.95),true);});DIFF.initial.lo.forEach(function(i){addDirt(b[i],rand(0.75,0.95),true);});if(DIFF.initial.gum)placeLesion(tileAt(8,3),'gum',true);S.tool=null;S.ai.beatAt=DIFF===DIFFS.easy?6:4;var first=a[DIFF.initial.up[1]||DIFF.initial.up[0]];later(0.6,function(){guideTo(first);});}
-function start(diff){if(diff)DIFF=DIFFS[diff]||DIFFS.normal;reset();S.started=true;hideOverlay();seed();}
-function showEnd(title,body){if(!overlayEl)return;overlayEl.innerHTML='';var h=document.createElement('h1');h.className='stars';h.textContent=title;var p=document.createElement('p');p.textContent=body;var again=document.createElement('button');again.className='primary big';again.textContent='もういちど（'+DIFF.name+'）';again.onclick=function(){audioInit();start();};var row=document.createElement('div');row.className='row';row.style.cssText='display:flex;gap:8px;justify-content:center;margin-top:8px';[['easy','にゅうもん'],['normal','ふつう'],['hard','さいきょう']].forEach(function(d){if(DIFFS[d[0]]===DIFF)return;var b=document.createElement('button');b.className='small';b.textContent=d[1]+' にする';b.onclick=function(){audioInit();start(d[0]);};row.appendChild(b);});overlayEl.appendChild(h);overlayEl.appendChild(p);overlayEl.appendChild(again);overlayEl.appendChild(row);overlayEl.classList.remove('hidden');}
+function diffKey(){for(var k in DIFFS){if(DIFFS[k]===DIFF)return k;}return 'normal';}
+function trial(){return typeof DKTrial!=='undefined'?DKTrial:null;}
+function start(diff){if(diff)DIFF=DIFFS[diff]||DIFFS.normal;reset();S.started=true;hideOverlay();seed();if(trial())trial().roundStart(diffKey());}
+function showEnd(title,body){if(!overlayEl)return;overlayEl.innerHTML='';var h=document.createElement('h1');h.className='stars';h.textContent=title;var p=document.createElement('p');p.textContent=body;var again=document.createElement('button');again.className='primary big';again.textContent='もういちど（'+DIFF.name+'）';again.onclick=function(){audioInit();if(trial())trial().again();start();};var row=document.createElement('div');row.className='row';row.style.cssText='display:flex;gap:8px;justify-content:center;margin-top:8px';[['easy','にゅうもん'],['normal','ふつう'],['hard','さいきょう']].forEach(function(d){if(DIFFS[d[0]]===DIFF)return;var b=document.createElement('button');b.className='small';b.textContent=d[1]+' にする';b.onclick=function(){audioInit();start(d[0]);};row.appendChild(b);});overlayEl.appendChild(h);overlayEl.appendChild(p);overlayEl.appendChild(again);overlayEl.appendChild(row);overlayEl.classList.remove('hidden');}
 function hideOverlay(){if(overlayEl)overlayEl.classList.add('hidden');}
 if(typeof globalThis!=='undefined'&&globalThis.__HEADLESS__){globalThis.__engine={reset:reset,update:update,draw:draw,start:function(diff){if(diff)DIFF=DIFFS[diff]||DIFFS.normal;reset();S.started=true;seed();},setDiff:function(d){DIFF=DIFFS[d];},state:function(){return S;},pointerDown:pointerDown,pointerMove:pointerMove,pointerUp:pointerUp,TILES:TILES,toolPos:toolPos,problemTool:problemTool,primaryTarget:primaryTarget};}
 if(typeof document!=='undefined'){
@@ -404,6 +773,7 @@ if(typeof document!=='undefined'){
   function fit(){var vw=window.visualViewport?window.visualViewport.width:window.innerWidth,vh=window.visualViewport?window.visualViewport.height:window.innerHeight;var s=Math.min(vw/394,vh/764);wrap.style.transform='scale('+s+')';}if(window.visualViewport)window.visualViewport.addEventListener('resize',function(){fit();});window.addEventListener('resize',fit);fit();
   var dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=W*dpr;canvas.height=H*dpr;reset();
   document.getElementById('btnEasy').addEventListener('click',function(){audioInit();start('easy');});document.getElementById('btnNormal').addEventListener('click',function(){audioInit();start('normal');});document.getElementById('btnHard').addEventListener('click',function(){audioInit();start('hard');});
+  if(trial()){trial().init({storageKey:'dental-kingdom.brush-trial',courses:{easy:'にゅうもん',normal:'ふつう',hard:'さいきょう'}});trial().attachLongPress(overlayEl.querySelector('h1'));}
   function pos(e){var r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};}
   canvas.addEventListener('pointerdown',function(e){e.preventDefault();canvas.setPointerCapture(e.pointerId);var p=pos(e);pointerDown(p.x,p.y);});
   canvas.addEventListener('pointermove',function(e){var p=pos(e);pointerMove(p.x,p.y);});
