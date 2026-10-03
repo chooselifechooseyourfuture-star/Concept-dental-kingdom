@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>デンタルキングダム みがくモード v18</title>
+<title>デンタルキングダム みがくモード v19</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap">
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#2a2420;--fg:#f4ecdf;--muted:#c9b9a3;--btn:#f2b632;--btnfg:#2a2420;--btn2:#5a4b3d;--btn2fg:#f4ecdf;--panel:rgba(20,14,10,0.86)}
@@ -34,7 +34,7 @@ button.primary{background:var(--btn);color:var(--btnfg)}
   <div id="stage">
     <canvas id="game" width="390" height="760"></canvas>
     <div id="overlay">
-      <h1>みがくモード v18</h1>
+      <h1>みがくモード v19</h1>
       <p>① よごれた歯を タップ
 ② キャラが 道具を くれる
 ③ 半とうめいの 手の まねを する
@@ -445,7 +445,7 @@ var DIFFS={
 var DIFF=DIFFS.normal;
 /* ---- 状態 ---- */
 var S=null;
-function reset(){S={t:0,timeLeft:90,over:false,started:false,dirt:{},lesions:{},juice:null,tool:null,guide:null,guideT:0,wrongT:-9,wrongTool:null,painT:-9,ptr:{down:false,x:0,y:0,lastX:0,lastY:0,tile:-1},rinse:{active:false,p:0,cool:0,wave:-9},particles:[],popups:[],shake:0,flash:0,flashColor:GOLD,score:0,cleaned:0,combo:0,lastCleanT:-9,ai:{beatAt:3,tele:null,count:0},chars:{taru:{st:'idle',stT:0,x:CHAR.taru.x,y:CHAR.taru.y,bounce:0},denta:{st:'idle',stT:0,x:CHAR.denta.x,y:CHAR.denta.y,bounce:0},iru:{st:'idle',stT:0,scale:1,pour:0}},anes:{},idleT:0,target:-1,events:[],chain:{n:0,lastT:-9,tile:-1,finishT:-9,finishText:'',finishTile:-1},rings:[],spin:{t0:-9,dur:0.5},drops:[],hand:{t0:-9,tile:-1,tool:null,who:null},demo:{tile:-1,tool:null,t0:-9},taps:{},lock:-1,lockT:-9,stats:{rinse:0,maxMult:1,wrongDir:0},special:0,specialAnim:null,specials:0,iruAway:-9,uses:{anes:3,cr:3,fluoride:3},emptyT:-9,emptyTool:null,dirtBorn:{},lost:0,painAcc:0,painPopT:-9};}
+function reset(){S={t:0,timeLeft:90,over:false,started:false,dirt:{},lesions:{},juice:null,tool:null,guide:null,guideT:0,wrongT:-9,wrongTool:null,painT:-9,ptr:{down:false,x:0,y:0,lastX:0,lastY:0,tile:-1},rinse:{active:false,p:0,cool:0,wave:-9},particles:[],popups:[],shake:0,flash:0,flashColor:GOLD,score:0,cleaned:0,combo:0,lastCleanT:-9,ai:{beatAt:3,tele:null,count:0},chars:{taru:{st:'idle',stT:0,x:CHAR.taru.x,y:CHAR.taru.y,bounce:0},denta:{st:'idle',stT:0,x:CHAR.denta.x,y:CHAR.denta.y,bounce:0},iru:{st:'idle',stT:0,scale:1,pour:0}},anes:{},idleT:0,target:-1,events:[],chain:{n:0,lastT:-9,tile:-1,finishT:-9,finishText:'',finishTile:-1},rings:[],spin:{t0:-9,dur:0.5},drops:[],hand:{t0:-9,tile:-1,tool:null,who:null},demo:{tile:-1,tool:null,t0:-9},taps:{},lock:-1,lockT:-9,stats:{rinse:0,maxMult:1,wrongDir:0},special:0,specialAnim:null,specials:0,iruAway:-9,uses:{anes:3,cr:3,fluoride:3},emptyT:-9,emptyTool:null,dirtBorn:{},lost:0,painAcc:0,painPopT:-9,pendingTap:null,pendingAdvance:-1,dirtTouch:{}};}
 function rand(a,b){return a+Math.random()*(b-a);}
 function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
 function clamp(v,a,b){return v<a?a:v>b?b:v;}
@@ -510,12 +510,13 @@ function pourJuice(){var cand=ARCH.up.filter(function(i){return !S.lesions[i];})
 function problemTool(i){var L=S.lesions[i];if(L&&L.type==='lost')return null;if(S.juice&&S.juice.tiles.indexOf(i)>=0)return 'gargle';if(L){if(L.type==='c1')return 'fluoride';if(L.type==='c2'){if(!S.anes[i])return 'anes';if(L.drill<100)return 'turbine';if(L.fill<100)return 'cr';return 'light';}if(L.type==='gum')return L.floss<3?'floss':'gargle';}if((S.dirt[i]||0)>0.05)return 'brush';return null;}
 function treatable(i){var need=problemTool(i);if(!need)return false;if(LIMITED[need]&&S.uses[need]<=0)return false;return true;}
 function primaryTarget(){var best=-1,bp=0;for(var i=0;i<TILES.length;i++){var p=0;var L=S.lesions[i];if(!treatable(i))continue;if(S.juice&&S.juice.tiles.indexOf(i)>=0)p=5;else if(L)p=L.type==='c2'?4:L.type==='c1'?3:2;else if((S.dirt[i]||0)>0.05)p=1+(S.dirt[i]||0);if(p>bp){bp=p;best=i;}}return best;}
+function usedPopup(i,tool){var t=TILES[i];var left=S.uses[tool];popup(t.x,t.y-52,NAMES[tool]+'を つかった！ あと '+(left===Infinity?'∞':left),11,'#fff',1.6,'#2f5fbf');}
 function emptyFeedback(tool){if(S.t-S.emptyT<0.9)return;S.emptyT=S.t;S.emptyTool=tool;SFX.empty();setChar(toolOwner(tool),'shake');S.demo.tile=-1;}
 function guideTo(i){var tool=problemTool(i);if(!tool)return;if(LIMITED[tool]&&S.uses[tool]<=0){emptyFeedback(tool);S.target=i;return;}S.target=i;var who=toolOwner(tool);if(S.tool!==tool){S.tool=tool;S.hand={t0:S.t,tile:i,tool:tool,who:who};setChar(who,'reach');SFX.handoff();}S.demo={tile:i,tool:tool,t0:S.t,dim:false,shakeT:-9};S.guide=null;}
 function wrongFeedback(i,msg){var L=S.lesions[i];var now=S.t;if(now-S.wrongT<0.9)return;S.wrongT=now;S.wrongTool=S.tool;SFX.wrong();var owner=S.tool?toolOwner(S.tool):null;if(owner)setChar(owner,'shake');if(L)L.shakeT=now;guideTo(i);}
 function pain(i){if(S.t-S.painT<1.2)return;S.painT=S.t;SFX.ouch();S.shake=0.12;setChar('denta','wince');var t=TILES[i];burst(t.x,t.y,6,'#d63b3b',1);guideTo(i);}
 /* 道具の適用 */
-function brushAround(x,y,moved){var hit=false;for(var i=0;i<TILES.length;i++){var t=TILES[i];if(TILES[i].type!=='tooth'||!(S.dirt[i]>0.05)||S.lesions[i])continue;if(dist(x,y,t.x,t.y)<30){hit=true;S.dirt[i]-=moved*0.012;if(S.demo.tile===i||S.demo.tool==='brush')S.demo.dim=true;if(Math.random()<0.5)flake(i,'#c9ad3a');if(S.dirt[i]<=0.05){delete S.dirt[i];complete(i,'taru','brush');}}}if(hit&&Math.random()<0.25)SFX.scrub();return hit;}
+function brushAround(x,y,moved){var hit=false;for(var i=0;i<TILES.length;i++){var t=TILES[i];if(TILES[i].type!=='tooth'||!(S.dirt[i]>0.05)||S.lesions[i])continue;if(dist(x,y,t.x,t.y)<30){hit=true;S.dirt[i]-=moved*0.012;S.dirtTouch[i]=S.t;if(S.demo.tile===i||S.demo.tool==='brush')S.demo.dim=true;if(Math.random()<0.5)flake(i,'#c9ad3a');if(S.dirt[i]<=0.05){delete S.dirt[i];complete(i,'taru','brush');}}}if(hit&&Math.random()<0.25)SFX.scrub();return hit;}
 function applyDrag(i,dx,dy,x,y){var moved=Math.hypot(dx,dy);var tool=S.tool;var L=i>=0?S.lesions[i]:null;
   if(tool==='brush'){if(!brushAround(x,y,moved)&&i>=0&&L){S.acc=(S.acc||0)+moved;if(S.acc>90){S.acc=0;wrongFeedback(i);}}}
   else if(tool==='floss'){if(L&&L.type==='gum'&&L.floss<3){L.acc=(L.acc||0)+Math.abs(dy);L.hacc=(L.hacc||0)+Math.max(0,Math.abs(dx)-Math.abs(dy));if(L.hacc>70){L.hacc=0;S.stats.wrongDir++;S.demo.shakeT=S.t;SFX.wrong();}if(L.acc>26){L.acc=0;L.hacc=0;L.floss++;SFX.floss();flake(i,'#f4a3c0');S.demo.dim=true;popup(TILES[i].x,TILES[i].y-30,'',0,'',0);if(L.floss>=3){chainStep(i,'floss');guideTo(i);}}}else if(i>=0&&(L||S.dirt[i]>0.05)){S.acc=(S.acc||0)+moved;if(S.acc>90){S.acc=0;wrongFeedback(i);}}}
@@ -525,9 +526,9 @@ function applyDrag(i,dx,dy,x,y){var moved=Math.hypot(dx,dy);var tool=S.tool;var 
 function applyTap(i){var L=S.lesions[i];var tool=S.tool;var t=TILES[i];
   if(tool==='gargle'){if(S.rinse.cool>S.t){wrongFeedback(i);return;}doRinse();return;}
   if(!L){if(S.dirt[i]>0.05)wrongFeedback(i);return;}
-  if(tool==='anes'){if(L.type==='c2'&&!S.anes[i]){if(S.uses.anes<=0){emptyFeedback('anes');return;}L.taps=(L.taps||0)+1;SFX.tap();burst(t.x,t.y,4,'#4aa3ff',0.8);S.demo.dim=true;if(L.taps>=3){S.anes[i]=S.t+60;L.taps=0;S.uses.anes--;chainStep(i,'anes');setChar('denta','ready');guideTo(i);}}else wrongFeedback(i);}
-  else if(tool==='fluoride'){if(L.type==='c1'){if(S.uses.fluoride<=0){emptyFeedback('fluoride');return;}S.uses.fluoride--;burst(t.x,t.y,10,'#8fd0ff',1.2);SFX.coat();complete(i,'taru','fluoride');}else wrongFeedback(i);}
-  else if(tool==='cr'){if(L.type==='c2'&&L.drill>=100&&L.fill<100){if(S.uses.cr<=0){emptyFeedback('cr');return;}S.uses.cr--;L.fill=100;burst(t.x,t.y,10,'#fff',1.2);SFX.coat();chainStep(i,'cr');guideTo(i);}else wrongFeedback(i);}
+  if(tool==='anes'){if(L.type==='c2'&&!S.anes[i]){if(S.uses.anes<=0){emptyFeedback('anes');return;}L.taps=(L.taps||0)+1;SFX.tap();burst(t.x,t.y,4,'#4aa3ff',0.8);S.demo.dim=true;if(L.taps>=3){S.anes[i]=S.t+60;L.taps=0;S.uses.anes--;usedPopup(i,'anes');chainStep(i,'anes');setChar('denta','ready');guideTo(i);}}else wrongFeedback(i);}
+  else if(tool==='fluoride'){if(L.type==='c1'){if(S.uses.fluoride<=0){emptyFeedback('fluoride');return;}S.uses.fluoride--;usedPopup(i,'fluoride');burst(t.x,t.y,10,'#8fd0ff',1.2);SFX.coat();complete(i,'taru','fluoride');}else wrongFeedback(i);}
+  else if(tool==='cr'){if(L.type==='c2'&&L.drill>=100&&L.fill<100){if(S.uses.cr<=0){emptyFeedback('cr');return;}S.uses.cr--;usedPopup(i,'cr');L.fill=100;burst(t.x,t.y,10,'#fff',1.2);SFX.coat();chainStep(i,'cr');guideTo(i);}else wrongFeedback(i);}
   else if(tool==='light'){if(L.type==='c2'&&L.fill>=100){L.cure=100;SFX.light();burst(t.x,t.y,10,'#9fd8ff',1.2);complete(i,'denta','light');}else wrongFeedback(i);}
 }
 function doRinse(){S.stats.rinse++;S.rinse.wave=S.t;S.rinse.cool=S.t+10;SFX.rinse();S.flash=0.15;S.flashColor='#8fbde0';setChar('taru','cheer');vibrate([20,20,20]);for(var q=0;q<24;q++){S.particles.push({x:rand(OX,OX+COLS*TS),y:OY+ROWS*TS-10,vx:rand(-10,10),vy:rand(-160,-60),life:rand(0.5,0.9),age:0,color:'rgba(191,224,245,0.9)',size:rand(2,5),g:-20});}
@@ -543,7 +544,7 @@ function complete(i,who,tool){var L=S.lesions[i];delete S.lesions[i];delete S.di
   else{SFX.clean(1);S.flash=0.12;S.flashColor=who==='taru'?PINK:BLUE;vibrate([20,30,40]);setChar(who,'cheer');S.chars.iru.scale=0.75;setChar('iru','wince');}
   S.chain.n=0;S.chain.lastT=-9;
   if(S.guide&&S.guide.tile===i)S.guide=null;if(S.target===i)S.target=-1;if(S.hand.tile===i)S.hand.tile=-1;
-  if(S.lock===i){S.lock=-1;var nx=nextProblemNear(i);if(nx>=0)later(0.35,function(){if(problemTool(nx))setLock(nx);});}}
+  if(S.lock===i){S.lock=-1;var nx=nextProblemNear(i);if(nx>=0){if(S.ptr.down)S.pendingAdvance=nx;else later(0.35,function(){if(problemTool(nx)&&treatable(nx))setLock(nx);});}}}
 function nextProblemNear(i){var t=TILES[i];var best=-1,bd=1e9;for(var k=0;k<TILES.length;k++){if(k===i)continue;var pt=problemTool(k);if(!pt||pt==='brush'||!treatable(k))continue;var d=dist(t.x,t.y,TILES[k].x,TILES[k].y);if(d<bd){bd=d;best=k;}}return best;}
 /* ---- クリーニング（必殺技・手動発動） ---- */
 var LIMITED={anes:1,cr:1,fluoride:1};
@@ -622,17 +623,18 @@ function pointerDown(x,y){y=adjY(y);S.ptr.down=true;S.ptr.x=x;S.ptr.y=y;S.ptr.la
   var onBoard=x>OX-10&&x<OX+COLS*TS+10&&y>OY-10&&y<OY+ROWS*TS+10;
   var ti=tileHit(x,y);S.ptr.tile=ti;
   // 病変を触ったらロック（汚れの帯は場所で磨く）
-  if(ti>=0&&S.lesions[ti]&&!treatable(ti)){var nt=problemTool(ti);if(nt)emptyFeedback(nt);var tt2=TILES[ti];popup(tt2.x,tt2.y-34,'いまは なおせない',10,'#fff',1.2,'#6b5a3a');S.ptr.tile=-1;return;}
-  if(ti>=0&&(S.lesions[ti]||(S.juice&&S.juice.tiles.indexOf(ti)>=0))){setLock(ti);if(S.tool===problemTool(ti)&&isTapTool(S.tool)){applyTap(ti);}return;}
+  if(ti>=0&&S.lesions[ti]&&!treatable(ti)){var nt=problemTool(ti);if(nt)emptyFeedback(nt);var tt2=TILES[ti];popup(tt2.x,tt2.y-34,(nt?NAMES[nt]+'が ないよ。':'いまは なおせない。')+'ほかの歯を みがこう',10,'#fff',1.8,'#6b5a3a');S.ptr.tile=-1;return;}
+  if(ti>=0&&(S.lesions[ti]||(S.juice&&S.juice.tiles.indexOf(ti)>=0))){setLock(ti);if(S.tool===problemTool(ti)&&isTapTool(S.tool)){S.pendingTap={tile:ti,x:x,y:y};}return;}
   if(ti>=0&&S.dirt[ti]>0.05){if(S.tool!=='brush'){guideTo(ti);}S.target=ti;return;}
   // 空きタイル／盤の外：ロック中なら、そこで動かした操作がロック先に効く
-  if(S.lock>=0&&problemTool(S.lock)){var need=problemTool(S.lock);if(S.tool!==need){guideTo(S.lock);return;}if(isTapTool(S.tool)){applyTap(S.lock);}return;}
-  if(S.tool==='gargle'&&S.rinse.cool<=S.t&&onBoard)doRinse();
+  if(S.lock>=0&&problemTool(S.lock)){var need=problemTool(S.lock);if(S.tool!==need){guideTo(S.lock);return;}if(isTapTool(S.tool)){S.pendingTap={tile:S.lock,x:x,y:y};}return;}
+  if(S.tool==='gargle'&&S.rinse.cool<=S.t&&onBoard)S.pendingTap={tile:-1,x:x,y:y,rinse:true};
 }
-function pointerMove(x,y){y=adjY(y);if(!S.ptr.down)return;var dx=x-S.ptr.lastX,dy=y-S.ptr.lastY;S.ptr.lastX=x;S.ptr.lastY=y;S.ptr.x=x;S.ptr.y=y;if(S.over||!S.started)return;var ti=tileHit(x,y);if(ti!==S.ptr.tile){S.ptr.tile=ti;}
+function pointerMove(x,y){y=adjY(y);if(!S.ptr.down)return;var dx=x-S.ptr.lastX,dy=y-S.ptr.lastY;S.ptr.lastX=x;S.ptr.lastY=y;S.ptr.x=x;S.ptr.y=y;if(S.over||!S.started)return;if(S.pendingTap&&dist(x,y,S.pendingTap.x,S.pendingTap.y)>12)S.pendingTap=null;var ti=tileHit(x,y);if(ti!==S.ptr.tile){S.ptr.tile=ti;}
   if(S.tool==='brush'){applyDrag(ti,dx,dy,x,y);}
   else if(S.tool==='floss'||S.tool==='turbine'){var tgt=S.lock>=0&&S.lesions[S.lock]?S.lock:ti;applyDrag(tgt,dx,dy,x,y);}}
-function pointerUp(){S.ptr.down=false;S.ptr.tile=-1;drillOff();}
+function pointerUp(){S.ptr.down=false;S.ptr.tile=-1;drillOff();if(S.pendingTap&&S.started&&!S.over){var pt=S.pendingTap;S.pendingTap=null;if(pt.rinse){if(S.rinse.cool<=S.t)doRinse();}else if(problemTool(pt.tile)===S.tool)applyTap(pt.tile);}else S.pendingTap=null;
+  if(S.pendingAdvance>=0){var nx=S.pendingAdvance;S.pendingAdvance=-1;if(problemTool(nx)&&treatable(nx))setLock(nx);}}
 function starCount(){var th=DIFF.stars||[1200,3500,6500];var n=0;for(var i=0;i<3;i++){if(S.score>=th[i])n=i+1;}return Math.max(0,n-S.lost);}
 function tipText(){var c2=0;for(var k in S.lesions){if(S.lesions[k].type==='c2')c2++;}if(S.lost>0)return 'ぬけた歯は もどらない。くろい あなは はやく なおそう';if(S.uses.anes<=0||S.uses.cr<=0||S.uses.fluoride<=0)return 'ちりょうの どうぐは 3回だけ。よごれは ほうっておくと むしばに';if(c2>0)return 'くろい あなは デンタに まかせよう';if(S.stats.rinse===0)return 'うがいで まとめて ながそう';if(S.stats.wrongDir>=2)return 'フロスは うえ・した に うごかそう';if(S.stats.maxMult<2)return 'つづけて なおすと ×2 になるよ';if(DIFF!==DIFFS.hard)return 'つぎは '+(DIFF===DIFFS.easy?'ふつう':'さいきょう')+' に ちょうせん';return 'かんぺき！ もういちど';}
 function endGame(){if(specialReady())startSpecial(false);S.over=true;drillOff();SFX.win();var n=starCount();if(trial())trial().result(diffKey(),S.score,n);var stars='';for(var i=0;i<3;i++)stars+=i<n?'⭐':'☆';showEnd(stars,'きれいにした '+S.cleaned+'　クリーニング '+S.specials+'回'+(S.lost?'　ぬけた歯 '+S.lost:'')+'\n'+(n>=3?'さいこう！':n===2?'すごい！':n===1?'いいね！':'つぎは もっと')+'\n\n'+tipText());}
@@ -676,7 +678,7 @@ function drawBoard(ctx){ctx.fillStyle='#d8b37f';rr(ctx,OX-6,OY-6,COLS*TS+12,ROWS
   }
   // 汚れの帯（アーチに沿って連続）
   ['up','lo'].forEach(function(a){var list=ARCH[a];for(var i=0;i<list.length-1;i++){var A=list[i],B=list[i+1];var da=S.dirt[A]||0,db=S.dirt[B]||0;if(da>0.05&&db>0.05){var ta=TILES[A],tb=TILES[B];ctx.strokeStyle='rgba(217,196,90,'+(0.35+0.5*Math.min(da,db))+')';ctx.lineWidth=30*Math.min(1,(da+db));ctx.lineCap='round';ctx.beginPath();ctx.moveTo(ta.x,ta.y);ctx.lineTo(tb.x,tb.y);ctx.stroke();}}});
-  for(var d in S.dirt){var v=S.dirt[d];if(v<=0.05)continue;var td=TILES[d];var ageF=clamp((S.t-(S.dirtBorn[d]||S.t))/DIFF.decay,0,1);var dr=Math.round(217-90*ageF),dg=Math.round(196-110*ageF),db=Math.round(90-40*ageF);ctx.fillStyle='rgba('+dr+','+dg+','+db+','+(0.4+0.55*v)+')';if(ageF>0.7){ctx.strokeStyle='rgba(123,63,191,'+(0.5+0.5*Math.sin(S.t*8))+')';ctx.lineWidth=2;ctx.setLineDash([3,3]);rr(ctx,td.x-19,td.y-19,38,38,7);ctx.stroke();ctx.setLineDash([]);}ctx.beginPath();ctx.arc(td.x,td.y,15*Math.sqrt(v),0,6.29);ctx.fill();ctx.fillStyle='rgba(201,173,58,'+(0.6*v)+')';[[-10,-6,6],[8,4,5],[-2,10,4],[9,-9,4]].forEach(function(b){ctx.beginPath();ctx.arc(td.x+b[0],td.y+b[1],b[2]*Math.sqrt(v),0,6.29);ctx.fill();});if(v>0.5)drawGerm(ctx,td.x+8,td.y-12,0.9);}
+  for(var d in S.dirt){var v=S.dirt[d];if(v<=0.05)continue;var td=TILES[d];var ageF=clamp((S.t-(S.dirtBorn[d]||S.t))/DIFF.decay,0,1);var dr=Math.round(217-90*ageF),dg=Math.round(196-110*ageF),db=Math.round(90-40*ageF);ctx.fillStyle='rgba('+dr+','+dg+','+db+','+(0.4+0.55*v)+')';if(ageF>0.7){ctx.strokeStyle='rgba(123,63,191,'+(0.5+0.5*Math.sin(S.t*8))+')';ctx.lineWidth=2;ctx.setLineDash([3,3]);rr(ctx,td.x-19,td.y-19,38,38,7);ctx.stroke();ctx.setLineDash([]);}ctx.beginPath();ctx.arc(td.x,td.y,15*Math.sqrt(v),0,6.29);ctx.fill();ctx.fillStyle='rgba(201,173,58,'+(0.6*v)+')';[[-10,-6,6],[8,4,5],[-2,10,4],[9,-9,4]].forEach(function(b){ctx.beginPath();ctx.arc(td.x+b[0],td.y+b[1],b[2]*Math.sqrt(v),0,6.29);ctx.fill();});if(v>0.5)drawGerm(ctx,td.x+8,td.y-12,0.9);if(S.t-(S.dirtTouch[d]||-9)<1.2){var pr=clamp(1-v,0,1);ctx.beginPath();ctx.arc(td.x,td.y,20,-Math.PI/2,-Math.PI/2+pr*6.283);ctx.strokeStyle=GOLD;ctx.lineWidth=4;ctx.lineCap='round';ctx.stroke();if(v<0.3)txt(ctx,'あとすこし！',td.x,td.y-28,10,'#b0306a','center',800,'rgba(255,255,255,0.9)');}}
   // 病変
   for(var lk in S.lesions){var L2=S.lesions[lk],t2=TILES[lk];var untr=(L2.type==='c1'||L2.type==='c2')&&!treatable(lk);if(untr){ctx.fillStyle='rgba(120,110,100,0.85)';ctx.beginPath();ctx.arc(t2.x-14,t2.y-14,7,0,6.29);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(t2.x-17,t2.y-17);ctx.lineTo(t2.x-11,t2.y-11);ctx.moveTo(t2.x-11,t2.y-17);ctx.lineTo(t2.x-17,t2.y-11);ctx.stroke();}
     if(L2.type==='c1'){ctx.fillStyle='#3a2a2a';ctx.beginPath();ctx.arc(t2.x+2,t2.y,5,0,6.29);ctx.fill();if(L2.coat>0){ctx.strokeStyle='rgba(143,208,255,'+(L2.coat/100)+')';ctx.lineWidth=4;ctx.beginPath();ctx.arc(t2.x+2,t2.y,10,0,6.29);ctx.stroke();}if(L2.evolveAt){var f=clamp(1-(L2.evolveAt-S.t)/(DIFF.evolve||30),0,1);ctx.strokeStyle='rgba(123,63,191,0.7)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(t2.x,t2.y,19,-Math.PI/2,-Math.PI/2+f*6.283);ctx.stroke();}}
@@ -755,7 +757,7 @@ function draw(ctx){ctx.save();if(S.shake>0)ctx.translate(rand(-1,1)*S.shake*14,r
   // 指の道具
   if(S.ptr.down&&S.tool&&S.ptr.y<OY+ROWS*TS+60){ctx.save();ctx.translate(S.ptr.x,S.ptr.y-28);ctx.beginPath();ctx.arc(0,0,22,0,6.29);ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();ctx.strokeStyle=GOLD;ctx.lineWidth=3;ctx.stroke();drawIcon(ctx,TOOLICON[S.tool],0,0,26,'#2a2a3a');ctx.restore();}
   S.particles.forEach(function(p){ctx.globalAlpha=1-p.age/p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,6.29);ctx.fill();});ctx.globalAlpha=1;
-  S.popups.forEach(function(q){var f=q.age/q.life;ctx.globalAlpha=f<0.75?1:1-(f-0.75)/0.25;var sc=f<0.15?0.6+f/0.15*0.5:1.1-Math.min(0.1,f*0.1);ctx.save();ctx.translate(q.x,q.y-f*26);ctx.scale(sc,sc);if(q.bg){ctx.fillStyle=q.bg;rr(ctx,-q.size*1.6,-q.size*0.8,q.size*3.2,q.size*1.6,q.size*0.8);ctx.fill();txt(ctx,q.text,0,0,q.size,q.color);}else txt(ctx,q.text,0,0,q.size,q.color,'center',800,'rgba(255,255,255,0.9)');ctx.restore();});ctx.globalAlpha=1;
+  S.popups.forEach(function(q){var f=q.age/q.life;ctx.globalAlpha=f<0.75?1:1-(f-0.75)/0.25;var sc=f<0.15?0.6+f/0.15*0.5:1.1-Math.min(0.1,f*0.1);var tw=q.text.length*q.size*1.05+16;var qx=clamp(q.x,tw/2+6,W-tw/2-6);ctx.save();ctx.translate(qx,q.y-f*26);ctx.scale(sc,sc);if(q.bg){ctx.fillStyle=q.bg;rr(ctx,-tw/2,-q.size*0.8,tw,q.size*1.6,q.size*0.8);ctx.fill();txt(ctx,q.text,0,0,q.size,q.color);}else txt(ctx,q.text,0,0,q.size,q.color,'center',800,'rgba(255,255,255,0.9)');ctx.restore();});ctx.globalAlpha=1;
   drawHUD(ctx);ctx.restore();
   if(S.flash>0){ctx.globalAlpha=S.flash*1.6;ctx.fillStyle=S.flashColor;ctx.fillRect(0,0,W,GH);ctx.globalAlpha=1;}
   ctx.fillStyle='#1a1512';ctx.fillRect(0,GH,W,H-GH);}
